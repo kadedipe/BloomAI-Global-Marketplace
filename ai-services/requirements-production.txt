@@ -3,3 +3,4 @@ torch==2.13.0+cpu
 torchvision==0.28.0+cpu
 numpy==2.5.1
 pillow==12.3.0
+gdown==6.1.0
