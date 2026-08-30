@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import tarfile
 from pathlib import Path
 
@@ -27,6 +28,33 @@ def validate(dataset_dir: Path) -> None:
             raise RuntimeError(f"{split} must contain category directories 1 through 102")
 
 
+def normalize_layout(data_dir: Path, dataset_dir: Path) -> None:
+    """Find a valid extracted root and normalize it to data/flowers."""
+    candidates = sorted(
+        {path.parent for path in data_dir.rglob("train") if path.is_dir()},
+        key=lambda path: (len(path.parts), str(path)),
+    )
+    source = None
+    for candidate in candidates:
+        try:
+            validate(candidate)
+        except RuntimeError:
+            continue
+        source = candidate
+        break
+    if source is None:
+        raise RuntimeError("Archive did not contain valid train, valid, and test splits")
+    if source.resolve() == dataset_dir.resolve():
+        return
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+    for split in ("train", "valid", "test"):
+        target = dataset_dir / split
+        if target.exists():
+            shutil.rmtree(target)
+        shutil.move(str(source / split), str(target))
+    validate(dataset_dir)
+
+
 def main() -> None:
     args = parse_args()
     archive = args.data_dir / "flower_data.tar.gz"
@@ -44,6 +72,7 @@ def main() -> None:
         raise RuntimeError("Dataset download did not produce an archive")
     with tarfile.open(archive, mode="r:gz") as bundle:
         bundle.extractall(args.data_dir, filter="data")
+    normalize_layout(args.data_dir, dataset_dir)
     validate(dataset_dir)
     print(f"Dataset ready at {dataset_dir}")
 
