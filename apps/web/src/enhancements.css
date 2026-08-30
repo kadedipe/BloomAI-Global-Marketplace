@@ -1,0 +1,42 @@
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.upload-control {
+  min-height: 54px;
+  border: 1px dashed #88a184;
+  border-radius: 12px;
+  padding: 14px;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  cursor: pointer;
+  background: #fff;
+}
+.upload-control svg { width: 20px; }
+.product-preview {
+  width: min(100%, 420px);
+  max-height: 280px;
+  object-fit: cover;
+  border-radius: 12px;
+}
+.form-actions, .card-actions { display: flex; gap: 10px; align-items: center; }
+.card-actions { margin-top: 18px; flex-wrap: wrap; }
+.card-actions button { padding: 9px 13px; }
+.card-actions svg { width: 16px; }
+.danger {
+  border: 1px solid #b85a50;
+  background: #fff;
+  color: #8a3028;
+  border-radius: 99px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 15px;
+}
+.payment-message { margin: 0 0 24px; }

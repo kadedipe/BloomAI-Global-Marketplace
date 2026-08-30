@@ -17,6 +17,14 @@ export default defineRailway((ctx) => {
       ENABLE_API_DOCS: "true",
       SENTRY_DSN: preserve(),
       SENTRY_TRACES_SAMPLE_RATE: "0.1",
+      CLOUDINARY_CLOUD_NAME: preserve(),
+      CLOUDINARY_API_KEY: preserve(),
+      CLOUDINARY_API_SECRET: preserve(),
+      PRODUCT_IMAGE_MAX_BYTES: "5000000",
+      PAYSTACK_SECRET_KEY: preserve(),
+      PAYSTACK_CALLBACK_URL: "https://bloomai-web-production.up.railway.app/?payment=callback",
+      PAYSTACK_CURRENCIES: "NGN",
+      RATE_LIMIT_ENABLED: "true",
     },
   });
   const aiApi = service("AI Inference API", {

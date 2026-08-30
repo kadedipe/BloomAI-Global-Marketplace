@@ -16,6 +16,14 @@ class Settings(BaseSettings):
     jwt_expiry_minutes: int = 60
     auth_cookie_name: str = "bloomai_session"
     enable_api_docs: bool = False
+    cloudinary_cloud_name: str = ""
+    cloudinary_api_key: str = ""
+    cloudinary_api_secret: str = ""
+    product_image_max_bytes: int = 5_000_000
+    paystack_secret_key: str = ""
+    paystack_callback_url: str = ""
+    paystack_currencies: str = "NGN"
+    rate_limit_enabled: bool = True
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @field_validator("cors_origins", mode="before")
@@ -46,6 +54,14 @@ class Settings(BaseSettings):
                 "development default in production"
             )
         return self
+
+    @property
+    def cloudinary_enabled(self) -> bool:
+        return all((self.cloudinary_cloud_name, self.cloudinary_api_key, self.cloudinary_api_secret))
+
+    @property
+    def paystack_enabled(self) -> bool:
+        return bool(self.paystack_secret_key and self.paystack_callback_url)
 
 
 @lru_cache

@@ -7,6 +7,8 @@ __pycache__/
 .ruff_cache/
 .venv/
 node_modules/
+apps/web/playwright-report/
+apps/web/test-results/
 dist/
 coverage/
 *.sqlite3

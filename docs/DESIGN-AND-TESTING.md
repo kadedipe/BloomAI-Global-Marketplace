@@ -12,8 +12,8 @@ The architecture prioritizes availability, security, evolvability, testability, 
 
 | Component | Responsibility | Data/communication |
 |---|---|---|
-| React web | Customer and vendor experience | HTTPS to public APIs |
-| Marketplace API | Identity, authorization and catalog transactions | PostgreSQL; Redis event queue |
+| React web | Customer/vendor experience, media preview and Paystack redirect checkout | HTTPS to public APIs and Paystack hosted checkout |
+| Marketplace API | Identity, authorization, catalog, media and payment orchestration | PostgreSQL; Redis throttling/events; Cloudinary; Paystack |
 | AI API | Upload validation and model inference boundary | Model artifact mounted at runtime |
 | Event worker | Asynchronous domain-event processing | Private Redis connection |
 | PostgreSQL | Durable users and products | Railway private network |
@@ -38,7 +38,15 @@ Railway is the recommended cloud target because it supports isolated monorepo se
 
 ## 5. Security and privacy
 
-Passwords are Argon2-hashed. JWTs are signed, expiring and sent through bearer authorization. Inputs are constrained by typed schemas; image MIME type and size are bounded. Containers run as non-root users. Secrets are preserved in Railway rather than committed. CI includes dependency/source vulnerability scanning. Production should additionally use a custom domain, WAF/rate limiting, email verification, secret rotation and database backups.
+Passwords are Argon2-hashed. JWTs are signed, expiring and stored in Secure HttpOnly cookies, with bearer authorization retained for non-browser clients. Cookie-authenticated mutations require a trusted Origin, reducing cross-site request forgery risk. Redis-backed throttles protect authentication, product/media writes and payment initialization. Inputs are constrained by typed schemas; image MIME type, content and size are validated. Paystack amounts are calculated server-side, webhook signatures use HMAC-SHA512 and successful payments are accepted only when reference, amount and currency match the stored order. Containers run as non-root users and secrets are preserved in Railway rather than committed.
+
+## 5.1 Product media
+
+Vendors upload JPEG, PNG or WebP files to the Marketplace API. The API validates content with Pillow and uploads through server-held Cloudinary credentials into a vendor-specific folder. Products store the secure CDN URL and public identifier. Ownership rules protect update/delete operations, and the web uses preview, lazy loading and a local fallback image.
+
+## 5.2 Payments
+
+The first payment phase uses Paystack hosted checkout. BloomAI creates a pending order from the authoritative database price, sends the amount in minor units, redirects to Paystack, and confirms payment through both an idempotent signed webhook and authenticated verification endpoint. The platform does not claim vendor split payouts; those require vendor KYC, settlement, refunds, disputes and reconciliation controls.
 
 ## 6. Testing strategy
 
@@ -55,9 +63,8 @@ Tests run on every pull request and push to `main`. CI concurrency cancels super
 
 ## 7. Known limitations and roadmap
 
-- The trained flower model is not committed because model provenance, compatibility and size must be verified.
+- The verified MobileNetV3 Small artifact is provisioned from controlled external storage and checked against the documented SHA-256 before loading.
 - Checkout/payment, inventory reservation, vendor moderation and email delivery are roadmap items, not claimed features.
-- Startup schema creation is adequate for the current additive prototype; versioned Alembic migrations are required before incompatible schema changes.
+- Versioned Alembic migrations run before application startup; upgrade and downgrade paths must be exercised against a disposable database for each schema change.
 - Redis lists provide simple queueing but not durable acknowledgements. Production scale should adopt Redis Streams or a managed durable queue with a dead-letter policy.
 - Load, accessibility, browser E2E and model-quality tests should be added before commercial launch.
-
