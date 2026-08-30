@@ -14,6 +14,7 @@ export default defineRailway((ctx) => {
       REDIS_URL: cache.env.REDIS_URL,
       JWT_SECRET: preserve(),
       CORS_ORIGINS: preserve(),
+      ENABLE_API_DOCS: "true",
       SENTRY_DSN: preserve(),
       SENTRY_TRACES_SAMPLE_RATE: "0.1",
     },

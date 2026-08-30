@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     cors_origins: list[str] | str = ["http://localhost:5173"]
     jwt_secret: str = DEVELOPMENT_JWT_SECRET
     jwt_expiry_minutes: int = 60
+    auth_cookie_name: str = "bloomai_session"
+    enable_api_docs: bool = False
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @field_validator("cors_origins", mode="before")
