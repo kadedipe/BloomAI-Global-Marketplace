@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import threading
 from pathlib import Path
@@ -15,6 +16,7 @@ from torchvision import models, transforms
 
 EXPECTED_SHA256 = "9ee2f29556562a14a666ad8345b850b7aa11d26dc2e73b16a735d4d33b515dc9"
 NUM_CLASSES = 102
+logger = logging.getLogger(__name__)
 
 
 class ModelRuntime:
@@ -42,12 +44,14 @@ class ModelRuntime:
     def _provision(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if self.path.is_file() and self.sha256(self.path) == self.expected_sha256:
+            logger.info("Using checksum-verified model artifact at %s", self.path)
             return
         if not self.file_id:
             raise RuntimeError("MODEL_GDRIVE_FILE_ID is required when the model is absent")
         temporary = self.path.with_suffix(self.path.suffix + ".download")
         temporary.unlink(missing_ok=True)
-        result = gdown.download(id=self.file_id, output=str(temporary), quiet=True)
+        logger.info("Downloading model artifact from Google Drive to %s", temporary)
+        result = gdown.download(id=self.file_id, output=str(temporary), quiet=False)
         if not result or not temporary.is_file():
             raise RuntimeError("Model download failed")
         actual = self.sha256(temporary)
@@ -55,6 +59,7 @@ class ModelRuntime:
             temporary.unlink(missing_ok=True)
             raise RuntimeError(f"Model checksum mismatch: expected {self.expected_sha256}, got {actual}")
         temporary.replace(self.path)
+        logger.info("Model artifact downloaded and checksum verified")
 
     def initialize(self) -> None:
         try:
@@ -77,10 +82,12 @@ class ModelRuntime:
             self.model = model
             self.metadata = artifact
             self.error = None
+            logger.info("MobileNetV3 model initialized with %s classes", NUM_CLASSES)
         except Exception as exc:
             self.model = None
             self.metadata = {}
             self.error = str(exc)
+            logger.exception("Model initialization failed")
 
     @property
     def ready(self) -> bool:
