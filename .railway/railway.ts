@@ -8,7 +8,15 @@ export default defineRailway((ctx) => {
     source: github("kadedipe/BloomAI-Global-Marketplace", { branch: "main", rootDirectory: "services/marketplace-api" }),
     healthcheck: "/health/ready",
     replicas: 1,
-    env: { ENVIRONMENT: production ? "production" : "staging", DATABASE_URL: database.env.DATABASE_URL, REDIS_URL: cache.env.REDIS_URL, JWT_SECRET: preserve(), CORS_ORIGINS: preserve() },
+    env: {
+      ENVIRONMENT: production ? "production" : "staging",
+      DATABASE_URL: database.env.DATABASE_URL,
+      REDIS_URL: cache.env.REDIS_URL,
+      JWT_SECRET: preserve(),
+      CORS_ORIGINS: preserve(),
+      SENTRY_DSN: preserve(),
+      SENTRY_TRACES_SAMPLE_RATE: "0.1",
+    },
   });
   const aiApi = service("AI Inference API", {
     source: github("kadedipe/BloomAI-Global-Marketplace", { branch: "main", rootDirectory: "services/ai-api" }),
@@ -19,6 +27,8 @@ export default defineRailway((ctx) => {
       MODEL_GDRIVE_FILE_ID: "1CfPnSgK_UYa71EZQwve1nrxtYK1Edb60",
       MODEL_SHA256: "9ee2f29556562a14a666ad8345b850b7aa11d26dc2e73b16a735d4d33b515dc9",
       CORS_ORIGINS: preserve(),
+      SENTRY_DSN: preserve(),
+      SENTRY_TRACES_SAMPLE_RATE: "0.1",
     },
   });
   const eventWorker = service("Event Worker", {
