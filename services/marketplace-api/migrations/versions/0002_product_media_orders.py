@@ -2,6 +2,7 @@
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 revision = "0002_product_media_orders"
 down_revision = "0001_initial"
@@ -11,7 +12,14 @@ depends_on = None
 
 def upgrade() -> None:
     op.add_column("products", sa.Column("image_public_id", sa.String(512), nullable=True))
-    order_status = sa.Enum("pending", "paid", "failed", "cancelled", name="orderstatus")
+    order_status = postgresql.ENUM(
+        "pending",
+        "paid",
+        "failed",
+        "cancelled",
+        name="orderstatus",
+        create_type=False,
+    )
     order_status.create(op.get_bind(), checkfirst=True)
     op.create_table(
         "orders",
