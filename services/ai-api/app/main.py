@@ -2,6 +2,7 @@ import io
 import os
 from contextlib import asynccontextmanager
 
+import sentry_sdk
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -10,6 +11,14 @@ from PIL import Image, UnidentifiedImageError
 from app.model_runtime import runtime
 
 origins = [item.strip().rstrip("/") for item in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")]
+if os.getenv("SENTRY_DSN"):
+    sentry_sdk.init(
+        dsn=os.environ["SENTRY_DSN"],
+        environment=os.getenv("ENVIRONMENT", "development"),
+        release=os.getenv("RAILWAY_GIT_COMMIT_SHA"),
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+        send_default_pii=False,
+    )
 
 
 @asynccontextmanager

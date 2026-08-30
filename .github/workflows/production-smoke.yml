@@ -1,0 +1,39 @@
+name: Production smoke tests
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      WEB_URL: ${{ vars.PRODUCTION_WEB_URL || 'https://bloomai-web-production.up.railway.app' }}
+      MARKETPLACE_URL: ${{ vars.PRODUCTION_MARKETPLACE_URL || 'https://marketplace-api-production-c7cd.up.railway.app' }}
+      AI_URL: ${{ vars.PRODUCTION_AI_URL || 'https://ai-inference-api-production.up.railway.app' }}
+    steps:
+      - name: Verify public services
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 3 --retry-all-errors "${WEB_URL}/" >/dev/null
+          curl -fsS --retry 3 --retry-all-errors "${MARKETPLACE_URL}/health/live" | python -c 'import json,sys; assert json.load(sys.stdin)["status"] == "ok"'
+          curl -fsS --retry 3 --retry-all-errors "${MARKETPLACE_URL}/health/ready" | python -c 'import json,sys; assert json.load(sys.stdin)["status"] == "ready"'
+          curl -fsS --retry 3 --retry-all-errors "${MARKETPLACE_URL}/api/v1/products" | python -c 'import json,sys; assert isinstance(json.load(sys.stdin), list)'
+          curl -fsS --retry 3 --retry-all-errors "${AI_URL}/health/live" | python -c 'import json,sys; assert json.load(sys.stdin)["status"] == "ok"'
+          curl -fsS --retry 3 --retry-all-errors "${AI_URL}/health/ready" | python -c 'import json,sys; d=json.load(sys.stdin); assert d["model_loaded"] and d["classes"] == 102'
+      - name: Verify inference contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 --decode > /tmp/smoke.png
+          curl -fsS --retry 2 --retry-all-errors -F "image=@/tmp/smoke.png;type=image/png" "${AI_URL}/api/v1/classify" | python -c 'import json,sys; d=json.load(sys.stdin); assert d["model"] == "mobilenet_v3_small"; assert len(d["predictions"]) == 5'
