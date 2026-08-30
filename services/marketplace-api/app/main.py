@@ -3,7 +3,7 @@ import os
 from contextlib import asynccontextmanager
 
 import sentry_sdk
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +21,13 @@ from .schemas import (
     TokenResponse,
     UserResponse,
 )
-from .security import create_token, current_user, password_hash
+from .security import (
+    clear_auth_cookie,
+    create_token,
+    current_user,
+    password_hash,
+    set_auth_cookie,
+)
 
 settings = get_settings()
 logging.basicConfig(
@@ -44,10 +50,13 @@ async def lifespan(_: FastAPI):
     yield
 
 
+docs_enabled = settings.environment != "production" or settings.enable_api_docs
 app = FastAPI(
     title=settings.app_name,
-    version="1.0.0",
-    docs_url="/docs" if settings.environment != "production" else None,
+    version="1.1.0",
+    docs_url="/docs" if docs_enabled else None,
+    redoc_url="/redoc" if docs_enabled else None,
+    openapi_url="/openapi.json" if docs_enabled else None,
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -91,13 +100,25 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
 
 
 @app.post("/api/v1/auth/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(
+    payload: LoginRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     user = (
         await db.execute(select(User).where(User.email == payload.email.lower()))
     ).scalar_one_or_none()
     if not user or not password_hash.verify(payload.password, user.password_hash):
         raise HTTPException(401, "Invalid email or password")
-    return TokenResponse(access_token=create_token(user))
+    token = create_token(user)
+    set_auth_cookie(response, token)
+    return TokenResponse(access_token=token)
+
+
+@app.post("/api/v1/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(response: Response):
+    clear_auth_cookie(response)
+    response.status_code = status.HTTP_204_NO_CONTENT
 
 
 @app.get("/api/v1/auth/me", response_model=UserResponse)
