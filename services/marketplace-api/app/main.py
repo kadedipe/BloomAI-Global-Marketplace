@@ -1,10 +1,14 @@
 import logging
+import os
 from contextlib import asynccontextmanager
+
+import sentry_sdk
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
+
 from .config import get_settings
 from .database import create_schema, get_db
 from .events import publish_event
@@ -23,11 +27,20 @@ settings = get_settings()
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
 )
+if os.getenv("SENTRY_DSN"):
+    sentry_sdk.init(
+        dsn=os.environ["SENTRY_DSN"],
+        environment=settings.environment,
+        release=os.getenv("RAILWAY_GIT_COMMIT_SHA"),
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+        send_default_pii=False,
+    )
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    await create_schema()
+async def lifespan(_: FastAPI):
+    if settings.environment != "production":
+        await create_schema()
     yield
 
 
