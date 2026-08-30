@@ -1,5 +1,9 @@
 # Final demonstration plan (15–20 minutes)
 
+Recorded presentation: [Watch on YouTube](https://youtube.com/live/AffW_CxeEks?feature=share).
+
+Faculty-format requirement: retain the YouTube link as secondary evidence, but add the public-view Google Drive URL for the actual MP4/MOV before submission.
+
 Target length: 17 minutes. Record one `.mp4` with clear screen share and voice. Every group member must be visible and speak; present the required government-issued ID to camera. Upload to Google Drive with “Anyone with the link can view.”
 
 | Time | Segment | Evidence to show |
@@ -14,4 +18,4 @@ Target length: 17 minutes. Record one `.mp4` with clear screen share and voice. 
 | 14:30–16:00 | Engineering quality | GitHub PR, passing CI, tests and security scan |
 | 16:00–17:00 | Outcomes and roadmap | Delivered value, limitations and next safe increments |
 
-Before recording, seed at least three polished products, rehearse in an incognito window, verify the final URLs, clear personal notifications and keep a backup test image.
+Recording completed (user-confirmed). Before submission, verify the recording duration and required presenter/ID evidence, check every link while signed out, and add the public-view Google Drive MP4/MOV URL.

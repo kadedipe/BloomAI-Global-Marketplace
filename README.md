@@ -13,7 +13,8 @@ BloomAI is an AI-enabled botanical marketplace capstone by Kolapo Adedipe. The p
 | Marketplace readiness | [Health endpoint](https://marketplace-api-production-c7cd.up.railway.app/health/ready) | Database-backed readiness check |
 | AI Inference API | [AI readiness endpoint](https://ai-inference-api-production.up.railway.app/health/ready) | Verified model readiness |
 | Source repository | [GitHub repository](https://github.com/kadedipe/BloomAI-Global-Marketplace) | Monorepo, CI/CD and engineering evidence |
-| Agile board | [Trello product backlog](https://trello.com/invite/b/6a359b640166be0bf5636001/ATTIe8e1ab12cb2c5e1b5e4827fd4cc8145a9434255E/bloomai-global-marketplace-product-backlog-board) | Product backlog and sprint evidence |
+| Agile board | [Trello product backlog](https://trello.com/invite/b/6a359b640166be0bf5636001/ATTIe8e1ab12cb2c5e1b5e4827fd4cc8145a9434255E/bloomai-global-marketplace-product-backlog-board) | Product backlog and three-sprint evidence |
+| Recorded presentation | [Watch the 15–20 minute Capstone presentation](https://youtube.com/live/AffW_CxeEks?feature=share) | Product demonstration and engineering evidence |
 
 ## Demonstrated production capabilities
 
@@ -47,19 +48,19 @@ The original training notebooks, dataset preparation and reproducible MobileNetV
 
 ## MSSE Faculty submission evidence
 
-This repository maps the Quantic MSSE Capstone requirements to explicit evidence. Items marked **External action** must be completed outside source control before submission.
+This repository maps the Quantic MSSE Capstone requirements to explicit evidence. The presentation has been recorded and `quantic-grader` has been invited. The YouTube recording is linked below; Faculty’s specified Google Drive-hosted MP4 copy remains the final format-verification item.
 
 | Faculty requirement | Evidence | Status |
 |---|---|---|
 | Accessible, documented software repository | This README, service source, tests and contribution controls | Complete |
 | Deployed web application link | [BloomAI production](https://bloomai-web-production.up.railway.app) | Complete |
-| Agile task board | [Trello board](https://trello.com/invite/b/6a359b640166be0bf5636001/ATTIe8e1ab12cb2c5e1b5e4827fd4cc8145a9434255E/bloomai-global-marketplace-product-backlog-board) and [agile evidence](docs/AGILE-EVIDENCE.md) | Verify public access and update all stories |
-| At least three sprints | [Agile and sprint evidence](docs/AGILE-EVIDENCE.md) | Documented; add real meeting/demo links where available |
+| Agile task board | [Trello board](https://trello.com/invite/b/6a359b640166be0bf5636001/ATTIe8e1ab12cb2c5e1b5e4827fd4cc8145a9434255E/bloomai-global-marketplace-product-backlog-board) and [agile evidence](docs/AGILE-EVIDENCE.md) | Complete (user-validated) |
+| At least three sprints | [Agile and sprint evidence](docs/AGILE-EVIDENCE.md) | Complete |
 | Design, architecture and testing report | [Design and testing report](docs/DESIGN-AND-TESTING.md) | Complete |
 | CI/CD and collaborative engineering | [GitHub Actions CI](.github/workflows/ci.yml), PR history and [production operations](docs/PRODUCTION_OPERATIONS.md) | Complete |
 | AI tooling and model evidence | [AI tooling disclosure](docs/AI-TOOLING.md), `ai-services` and [production verification](docs/PRODUCTION-VERIFICATION.md) | Complete |
-| Final 15–20 minute demonstration | [Demonstration script](docs/DEMO-SCRIPT.md) | **External action:** record one MP4 and add its public-view Google Drive link here |
-| Grader access | Repository collaborator settings | **External action:** invite GitHub user `quantic-grader` |
+| Final 15–20 minute demonstration | [Recorded presentation](https://youtube.com/live/AffW_CxeEks?feature=share) and [demonstration script](docs/DEMO-SCRIPT.md) | Recorded and linked; add the actual public-view Google Drive MP4 URL to satisfy the Faculty hosting specification |
+| Grader access | Repository collaborator settings | Complete — `quantic-grader` invited (user-confirmed) |
 | Group agreement final page | Quantic submission dashboard | **External action if group-based:** submit privately; do not commit signatures or IDs |
 
 ### Submission index
@@ -73,7 +74,7 @@ This repository maps the Quantic MSSE Capstone requirements to explicit evidence
 - [Production operations and recovery](docs/PRODUCTION_OPERATIONS.md)
 - [Production completion checklist](docs/PRODUCTION-COMPLETION-CHECKLIST.md)
 
-Before submitting, verify every link in a signed-out browser, bring the Trello board up to date, add `quantic-grader`, complete the rehearsal, record the final demonstration and replace the pending video statement above with the public-view Google Drive URL.
+Before submitting, perform one final signed-out link check and replace the YouTube-only presentation evidence with—or supplement it using—the public-view URL of the actual MP4 uploaded to Google Drive. Keep the YouTube link as a convenient secondary viewing option.
 
 ## Local development
 
