@@ -7,7 +7,7 @@ export default defineRailway((ctx) => {
   const marketplaceApi = service("Marketplace API", {
     source: github("kadedipe/BloomAI-Global-Marketplace", { branch: "main", rootDirectory: "services/marketplace-api" }),
     healthcheck: "/health/ready",
-    replicas: production ? 2 : 1,
+    replicas: 1,
     env: { ENVIRONMENT: production ? "production" : "staging", DATABASE_URL: database.env.DATABASE_URL, REDIS_URL: cache.env.REDIS_URL, JWT_SECRET: preserve(), CORS_ORIGINS: preserve() },
   });
   const aiApi = service("AI Inference API", {
