@@ -8,6 +8,7 @@ Run from `ai-services` after extracting the Oxford Flowers dataset into `data/fl
 
 ```bash
 python -m pip install -r requirements-production.txt
+python prepare_dataset.py
 python train_production.py data/flowers --labels data/flower_labels.json
 ```
 
