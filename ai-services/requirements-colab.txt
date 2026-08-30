@@ -1,0 +1,2 @@
+# PyTorch and Torchvision are supplied by the GPU-enabled Colab runtime.
+gdown==6.1.0
