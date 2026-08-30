@@ -1,0 +1,12 @@
+.git
+.github
+.venv
+node_modules
+dist
+**/__pycache__
+**/.pytest_cache
+docs
+Tests
+*.tar.gz
+*.ipynb
+
