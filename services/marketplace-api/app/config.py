@@ -1,5 +1,5 @@
 from functools import lru_cache
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,6 +30,14 @@ class Settings(BaseSettings):
         if value.startswith("postgresql://"):
             return value.replace("postgresql://", "postgresql+asyncpg://", 1)
         return value
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self):
+        if self.environment == "production" and len(self.jwt_secret) < 32:
+            raise ValueError(
+                "JWT_SECRET must contain at least 32 characters in production"
+            )
+        return self
 
 
 @lru_cache

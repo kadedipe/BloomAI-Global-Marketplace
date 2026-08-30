@@ -36,6 +36,12 @@ services:
       MODEL_PATH: /app/models/checkpoint.pth
       CORS_ORIGINS: http://localhost:5173
     ports: ["8001:8000"]
+  event-worker:
+    build: ./services/event-worker
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis: {condition: service_healthy}
   web:
     build:
       context: ./apps/web
@@ -46,4 +52,3 @@ services:
     depends_on: [marketplace-api, ai-api]
 volumes:
   postgres_data:
-
