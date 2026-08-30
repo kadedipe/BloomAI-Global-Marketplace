@@ -1,6 +1,9 @@
 from functools import lru_cache
+
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEVELOPMENT_JWT_SECRET = "development-only-secret-change-me"
 
 
 class Settings(BaseSettings):
@@ -9,7 +12,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./bloomai.sqlite3"
     redis_url: str = "redis://localhost:6379/0"
     cors_origins: list[str] | str = ["http://localhost:5173"]
-    jwt_secret: str = "development-only-secret-change-me"
+    jwt_secret: str = DEVELOPMENT_JWT_SECRET
     jwt_expiry_minutes: int = 60
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -33,9 +36,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_secrets(self):
-        if self.environment == "production" and len(self.jwt_secret) < 32:
+        if self.environment == "production" and (
+            len(self.jwt_secret) < 32 or self.jwt_secret == DEVELOPMENT_JWT_SECRET
+        ):
             raise ValueError(
-                "JWT_SECRET must contain at least 32 characters in production"
+                "JWT_SECRET must be at least 32 characters and must not use the "
+                "development default in production"
             )
         return self
 
