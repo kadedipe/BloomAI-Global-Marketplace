@@ -2,11 +2,13 @@ import os
 from unittest.mock import AsyncMock, patch
 
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
-from fastapi.testclient import TestClient
-from app.main import app
-from app.config import Settings
-from pydantic import ValidationError
+
 import pytest
+from fastapi.testclient import TestClient
+from pydantic import ValidationError
+
+from app.config import Settings
+from app.main import app
 
 
 def test_health():
@@ -14,7 +16,7 @@ def test_health():
         assert client.get("/health/live").json()["status"] == "ok"
 
 
-def test_registration_and_login():
+def test_registration_login_cookie_and_logout():
     with TestClient(app) as client:
         payload = {
             "email": "vendor@example.com",
@@ -27,10 +29,16 @@ def test_registration_and_login():
             "/api/v1/auth/login",
             json={"email": payload["email"], "password": payload["password"]},
         )
-        assert response.status_code == 200 and response.json()["access_token"]
+        assert response.status_code == 200
+        assert response.json()["access_token"]
+        assert "bloomai_session" in response.cookies
+        assert response.cookies["bloomai_session"] not in response.text
+        assert client.get("/api/v1/auth/me").json()["email"] == payload["email"]
+        assert client.post("/api/v1/auth/logout").status_code == 204
+        assert client.get("/api/v1/auth/me").status_code == 401
 
 
-def test_vendor_can_create_product():
+def test_vendor_can_create_product_with_session_cookie():
     with TestClient(app) as client:
         payload = {
             "email": "catalog@example.com",
@@ -39,14 +47,13 @@ def test_vendor_can_create_product():
             "role": "vendor",
         }
         assert client.post("/api/v1/auth/register", json=payload).status_code == 201
-        token = client.post(
+        assert client.post(
             "/api/v1/auth/login",
             json={"email": payload["email"], "password": payload["password"]},
-        ).json()["access_token"]
+        ).status_code == 200
         with patch("app.main.publish_event", new=AsyncMock()) as publisher:
             response = client.post(
                 "/api/v1/products",
-                headers={"Authorization": f"Bearer {token}"},
                 json={
                     "name": "Peace Lily",
                     "description": "Indoor plant",
@@ -68,13 +75,12 @@ def test_customer_cannot_create_product():
             "role": "customer",
         }
         assert client.post("/api/v1/auth/register", json=payload).status_code == 201
-        token = client.post(
+        assert client.post(
             "/api/v1/auth/login",
             json={"email": payload["email"], "password": payload["password"]},
-        ).json()["access_token"]
+        ).status_code == 200
         response = client.post(
             "/api/v1/products",
-            headers={"Authorization": f"Bearer {token}"},
             json={"name": "Rose", "price": "10.00", "currency": "USD"},
         )
         assert response.status_code == 403
