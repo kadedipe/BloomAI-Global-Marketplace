@@ -10,7 +10,7 @@ Target length: 17 minutes. Record one `.mp4` with clear screen share and voice. 
 | 4:00–6:00 | Architecture | Monorepo services, PostgreSQL, Redis, worker and AI boundary |
 | 6:00–11:30 | Live product | Homepage plus API/curl flow: register vendor; log in; create listing; refresh public marketplace discovery |
 | 11:30–13:00 | AI behavior | Valid upload path; explain validated-model gate and never claim unavailable inference works |
-| 13:00–14:30 | Reliability | Health endpoints, Railway canvas and private services |
+| 13:00–14:30 | Reliability | Five live MobileNetV3 predictions, health endpoints, Railway canvas and private services |
 | 14:30–16:00 | Engineering quality | GitHub PR, passing CI, tests and security scan |
 | 16:00–17:00 | Outcomes and roadmap | Delivered value, limitations and next safe increments |
 

@@ -12,12 +12,12 @@ from app.main import app
 
 
 def test_health():
-    with TestClient(app) as client:
+    with TestClient(app, headers={"origin": "http://localhost:5173"}) as client:
         assert client.get("/health/live").json()["status"] == "ok"
 
 
 def test_registration_login_cookie_and_logout():
-    with TestClient(app) as client:
+    with TestClient(app, headers={"origin": "http://localhost:5173"}) as client:
         payload = {
             "email": "vendor@example.com",
             "password": "strong-password",
@@ -38,7 +38,7 @@ def test_registration_login_cookie_and_logout():
 
 
 def test_vendor_can_create_product_with_session_cookie():
-    with TestClient(app) as client:
+    with TestClient(app, headers={"origin": "http://localhost:5173"}) as client:
         payload = {
             "email": "catalog@example.com",
             "password": "strong-password",
@@ -66,7 +66,7 @@ def test_vendor_can_create_product_with_session_cookie():
 
 
 def test_customer_cannot_create_product():
-    with TestClient(app) as client:
+    with TestClient(app, headers={"origin": "http://localhost:5173"}) as client:
         payload = {
             "email": "customer@example.com",
             "password": "strong-password",
@@ -88,3 +88,27 @@ def test_customer_cannot_create_product():
 def test_production_rejects_weak_jwt_secret():
     with pytest.raises(ValidationError):
         Settings(environment="production", jwt_secret="weak")
+
+
+def test_vendor_cannot_modify_another_vendors_product():
+    with TestClient(app, headers={"origin": "http://localhost:5173"}) as client:
+        first = {"email": "owner@example.com", "password": "strong-password", "name": "Owner", "role": "vendor"}
+        second = {"email": "other@example.com", "password": "strong-password", "name": "Other", "role": "vendor"}
+        client.post("/api/v1/auth/register", json=first)
+        client.post("/api/v1/auth/login", json={"email": first["email"], "password": first["password"]})
+        with patch("app.main.publish_event", new=AsyncMock()):
+            product = client.post("/api/v1/products", json={"name": "Owned Rose", "price": "50.00", "currency": "NGN"}).json()
+        client.post("/api/v1/auth/logout")
+        client.post("/api/v1/auth/register", json=second)
+        client.post("/api/v1/auth/login", json={"email": second["email"], "password": second["password"]})
+        assert client.patch(f"/api/v1/products/{product['id']}", json={"name": "Stolen Rose"}).status_code == 403
+        assert client.delete(f"/api/v1/products/{product['id']}").status_code == 403
+
+
+def test_cookie_mutation_rejects_untrusted_origin():
+    with TestClient(app) as client:
+        payload = {"email": "csrf@example.com", "password": "strong-password", "name": "CSRF Vendor", "role": "vendor"}
+        client.post("/api/v1/auth/register", json=payload)
+        client.post("/api/v1/auth/login", json={"email": payload["email"], "password": payload["password"]})
+        response = client.post("/api/v1/products", json={"name": "Blocked", "price": "10.00", "currency": "NGN"})
+        assert response.status_code == 403

@@ -5,7 +5,7 @@ This matrix maps the Quantic MSSE Capstone Handbook requirements to repository e
 | Faculty requirement | Repository evidence | Status | Completion action |
 |---|---|---|---|
 | Accessible, documented GitHub repository | README, service READMEs, source comments, CI | Complete | Add `quantic-grader` as repository collaborator |
-| Working deployed web application | Railway IaC and deployment runbook | Pending external action | Deploy and replace `DEPLOYED_APP_URL` in README |
+| Working deployed web application | [BloomAI production](https://bloomai-web-production.up.railway.app), Railway IaC and production smoke workflow | Complete | Re-run the full browser rehearsal immediately before recording |
 | Accessible agile task board | Trello link in README and `AGILE-EVIDENCE.md` | Partial | Ensure all delivered stories, owners and completion states are current |
 | At least three sprints | `AGILE-EVIDENCE.md` | Documented | Attach real meeting/demo links where available |
 | Design and testing document | `DESIGN-AND-TESTING.md` | Complete |
@@ -22,4 +22,3 @@ This matrix maps the Quantic MSSE Capstone Handbook requirements to repository e
 - Repository engineering evidence: score 5 trajectory.
 - Final submission today: score 3–4 because deployment URL, grader access, current board evidence and final video cannot be completed inside source control.
 - Score 5 becomes defensible after every pending external action above is completed and the deployed demonstration succeeds end to end.
-

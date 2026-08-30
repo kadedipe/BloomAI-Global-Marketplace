@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-labelledby="title">
+  <title id="title">BloomAI product image placeholder</title>
+  <rect width="800" height="600" fill="#edf3e9"/>
+  <path d="M400 460c-8-122 4-204 0-288M397 343c-69-12-107-52-119-112 64 1 110 37 119 112Zm7-59c65-17 105-59 112-121-65 6-106 47-112 121Z" fill="none" stroke="#6e914f" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="400" cy="151" r="55" fill="#b7d58a"/>
+  <text x="400" y="535" text-anchor="middle" font-family="sans-serif" font-size="28" fill="#527063">BloomAI botanical listing</text>
+</svg>

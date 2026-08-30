@@ -2,7 +2,7 @@
 
 BloomAI is an AI-enabled botanical marketplace capstone by Kolapo Adedipe. It demonstrates secure marketplace transactions, independently deployable AI inference, event-driven processing and production engineering in a service-oriented monorepo.
 
-> Production application: `DEPLOYED_APP_URL` — replace immediately after Railway deployment.
+> Production application: https://bloomai-web-production.up.railway.app
 > Final demonstration: `DEMO_VIDEO_URL` — replace after uploading the 15–20 minute MP4 to Google Drive.
 
 [![CI](https://github.com/kadedipe/BloomAI-Global-Marketplace/actions/workflows/ci.yml/badge.svg)](https://github.com/kadedipe/BloomAI-Global-Marketplace/actions/workflows/ci.yml)
@@ -14,6 +14,8 @@ BloomAI is an AI-enabled botanical marketplace capstone by Kolapo Adedipe. It de
 - [Agile and three-sprint evidence](docs/AGILE-EVIDENCE.md)
 - [Final demonstration plan](docs/DEMO-SCRIPT.md)
 - [AI tooling disclosure](docs/AI-TOOLING.md)
+- [Production verification evidence](docs/PRODUCTION-VERIFICATION.md)
+- [Production completion checklist](docs/PRODUCTION-COMPLETION-CHECKLIST.md)
 - [Trello Scrum board](https://trello.com/invite/b/6a359b640166be0bf5636001/ATTIe8e1ab12cb2c5e1b5e4827fd4cc8145a9434255E/bloomai-global-marketplace-product-backlog-board)
 
 Before submission, add GitHub user `quantic-grader` as a repository collaborator and complete every pending external action in the compliance matrix.
@@ -40,7 +42,7 @@ The original training notebooks remain in `ai-services` as research provenance a
 - Process versioned `product.created` events outside the request cycle
 - Inspect service liveness/readiness and structured Railway logs
 
-The AI service does not fabricate a classification when its validated model is absent. It returns an explicit unavailable response until the model artifact and adapter are provisioned.
+The AI service provisions the verified 102-class MobileNetV3 Small artifact at startup, validates its SHA-256 checksum and returns five ranked predictions. It fails readiness rather than fabricating classifications when the artifact is absent or invalid.
 
 ## Local development
 
@@ -106,7 +108,7 @@ curl -X POST "$API/api/v1/auth/login" -H 'content-type: application/json' \
 
 ## Honest limitations
 
-Checkout/payment, inventory reservation, email delivery and vendor moderation are roadmap items. The committed flower-training code is not automatically production-compatible; model provenance and evaluation must be documented before enabling live inference. See the design report for risks and next steps.
+Paystack platform checkout, Cloudinary product media, inventory reservation, email delivery and vendor moderation are staged production capabilities. Paystack and Cloudinary remain disabled until their Railway secrets are configured. Vendor split payouts require a later KYC, refunds, disputes and reconciliation phase.
 
 ## License
 
