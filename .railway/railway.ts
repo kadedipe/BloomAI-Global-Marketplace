@@ -12,8 +12,14 @@ export default defineRailway((ctx) => {
   });
   const aiApi = service("AI Inference API", {
     source: github("kadedipe/BloomAI-Global-Marketplace", { branch: "main", rootDirectory: "services/ai-api" }),
-    healthcheck: "/health/live",
-    env: { ENVIRONMENT: production ? "production" : "staging", MODEL_PATH: "/app/models/checkpoint.pth", CORS_ORIGINS: preserve() },
+    healthcheck: "/health/ready",
+    env: {
+      ENVIRONMENT: production ? "production" : "staging",
+      MODEL_PATH: "/app/models/mobilenet_v3_small_flowers102.pth",
+      MODEL_GDRIVE_FILE_ID: "1CfPnSgK_UYa71EZQwve1nrxtYK1Edb60",
+      MODEL_SHA256: "9ee2f29556562a14a666ad8345b850b7aa11d26dc2e73b16a735d4d33b515dc9",
+      CORS_ORIGINS: preserve(),
+    },
   });
   const eventWorker = service("Event Worker", {
     source: github("kadedipe/BloomAI-Global-Marketplace", { branch: "main", rootDirectory: "services/event-worker" }),
