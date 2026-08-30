@@ -1,11 +1,12 @@
 .PHONY: test lint dev
 
 test:
-	python -m pytest services/marketplace-api/tests services/ai-api/tests -q
+	cd services/marketplace-api && python -m pytest -q
+	cd services/ai-api && python -m pytest -q
+	cd services/event-worker && python -m pytest -q
 
 lint:
-	python -m ruff check services
+	cd services/marketplace-api && python -m ruff check .
 
 dev:
 	docker compose up --build
-

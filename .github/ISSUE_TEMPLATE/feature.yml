@@ -1,0 +1,15 @@
+name: Feature story
+description: Propose a user-facing capability
+title: "[Story]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    attributes: {label: User story, description: "As a … I want … so that …"}
+    validations: {required: true}
+  - type: textarea
+    attributes: {label: Acceptance criteria}
+    validations: {required: true}
+  - type: dropdown
+    attributes: {label: Sprint, options: [Backlog, Sprint 1, Sprint 2, Sprint 3, Post-capstone]}
+    validations: {required: true}
+

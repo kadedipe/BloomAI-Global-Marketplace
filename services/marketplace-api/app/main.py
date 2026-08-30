@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from .config import get_settings
 from .database import create_schema, get_db
+from .events import publish_event
 from .models import Product, Role, User
 from .schemas import (
     LoginRequest,
@@ -127,4 +128,8 @@ async def create_product(
     db.add(product)
     await db.commit()
     await db.refresh(product)
+    await publish_event(
+        "product.created",
+        {"product_id": product.id, "vendor_id": user.id, "name": product.name},
+    )
     return product
