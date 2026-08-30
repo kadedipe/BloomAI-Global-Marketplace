@@ -30,3 +30,20 @@ sha256sum models/mobilenet_v3_small_flowers102.pth
 ```
 
 Upload the artifact to production object storage, then configure the AI API with its download location and checksum. Never commit model binaries to Git.
+
+
+## Google Colab GPU
+
+Do not install `requirements-production.txt` in a GPU-enabled Colab runtime because that file intentionally pins CPU-only wheels for CI and deployment. Colab already supplies a CUDA-enabled PyTorch build.
+
+After copying and extracting the repository ZIP to `/content`, run:
+
+```bash
+python -m pip install -r requirements-colab.txt
+python prepare_dataset.py
+python train_production.py data/flowers --labels data/flower_labels.json \
+  --output /content/drive/MyDrive/BloomAI-Colab/artifacts/mobilenet_v3_small_flowers102.pth \
+  --metrics-output /content/drive/MyDrive/BloomAI-Colab/artifacts/metrics.json
+```
+
+Train from Colab's local `/content` disk and write only release artifacts to mounted Drive. This avoids slow per-image reads through the Drive mount.
