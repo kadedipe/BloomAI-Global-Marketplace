@@ -12,3 +12,6 @@ coverage/
 *.sqlite3
 **/models/*.pth
 model-check-temp/
+ai-services/data/flower_data.tar.gz
+ai-services/data/flowers/
+ai-services/data/flower_data/
