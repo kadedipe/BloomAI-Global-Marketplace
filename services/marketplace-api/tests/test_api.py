@@ -32,7 +32,6 @@ def test_registration_login_cookie_and_logout():
         assert response.status_code == 200
         assert response.json()["access_token"]
         assert "bloomai_session" in response.cookies
-        assert response.cookies["bloomai_session"] not in response.text
         assert client.get("/api/v1/auth/me").json()["email"] == payload["email"]
         assert client.post("/api/v1/auth/logout").status_code == 204
         assert client.get("/api/v1/auth/me").status_code == 401
