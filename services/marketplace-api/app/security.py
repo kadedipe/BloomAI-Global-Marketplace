@@ -37,7 +37,7 @@ def set_auth_cookie(response: Response, token: str) -> None:
         max_age=settings.jwt_expiry_minutes * 60,
         httponly=True,
         secure=settings.environment == "production",
-        samesite="lax",
+        samesite="none" if settings.environment == "production" else "lax",
         path="/",
     )
 
@@ -48,7 +48,7 @@ def clear_auth_cookie(response: Response) -> None:
         key=settings.auth_cookie_name,
         httponly=True,
         secure=settings.environment == "production",
-        samesite="lax",
+        samesite="none" if settings.environment == "production" else "lax",
         path="/",
     )
 
