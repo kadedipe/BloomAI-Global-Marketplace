@@ -12,6 +12,7 @@ export default defineConfig({
       input:{
         main:resolve(root,'index.html'),
         admin:resolve(root,'admin.html'),
+        adminLogin:resolve(root,'admin-login.html'),
       },
     },
   },
