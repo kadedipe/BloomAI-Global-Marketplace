@@ -101,7 +101,7 @@ def test_user_can_update_preferences_and_suppress_order_notifications():
             "vendor_activity_in_app": True,
             "system_in_app": True,
         }
-        response = client.put("/api/v1/notifications/preferences", json=payload)
+        response = client.patch("/api/v1/notifications/preferences", json=payload)
         assert response.status_code == 200
         assert response.json()["orders_in_app"] is False
         assert asyncio.run(create_direct_notification(email, "order.created")) is False
@@ -165,7 +165,7 @@ def test_admin_critical_alerts_bypass_system_preference():
             "vendor_activity_in_app": False,
             "system_in_app": False,
         }
-        response = client.put("/api/v1/notifications/preferences", json=payload)
+        response = client.patch("/api/v1/notifications/preferences", json=payload)
         assert response.status_code == 200
         assert response.json()["critical_admin_alerts_mandatory"] is True
         assert asyncio.run(create_direct_notification(email, "system.critical.database")) is True
