@@ -17,11 +17,13 @@ async function enterAdmin(){
       window.location.replace('/admin-login.html?reason=forbidden');
       return;
     }
-    const [{installParticipantProfileEditor}]=await Promise.all([
+    const [{installParticipantProfileEditor},{installAdminNotificationTester}]=await Promise.all([
       import('./admin-participant-editor.js'),
+      import('./admin-test-notifications.js'),
       import('./admin.jsx'),
     ]);
     installParticipantProfileEditor();
+    installAdminNotificationTester();
   }catch{
     window.location.replace('/admin-login.html?reason=unavailable');
   }

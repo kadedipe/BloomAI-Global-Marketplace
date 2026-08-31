@@ -31,6 +31,15 @@ class NotificationListResponse(BaseModel):
     unread_count: int
 
 
+class TestNotificationRequest(BaseModel):
+    target_role: Role
+
+
+class TestNotificationResponse(BaseModel):
+    target_role: Role
+    delivered: int
+
+
 async def create_notification(
     db: AsyncSession,
     *,
@@ -123,6 +132,44 @@ async def list_notifications(
         )
     ).scalar_one()
     return NotificationListResponse(items=list(items), unread_count=unread_count)
+
+
+@router.post("/test", response_model=TestNotificationResponse, status_code=201)
+async def send_test_notification(
+    payload: TestNotificationRequest,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if user.role != Role.admin:
+        raise HTTPException(status_code=403, detail="Administrator access required")
+
+    user_ids = (
+        await db.execute(select(User.id).where(User.role == payload.target_role))
+    ).scalars().all()
+    unique_user_ids = set(user_ids)
+    if not unique_user_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No {payload.target_role.value} accounts are available for notification testing",
+        )
+
+    destination = "/admin.html" if payload.target_role == Role.admin else "/#market"
+    await notify_users(
+        db,
+        unique_user_ids,
+        type="system.test",
+        title="BloomAI notification test",
+        message=(
+            "This is an administrator-initiated test notification. "
+            "No order, payment, or marketplace analytics record was created."
+        ),
+        link=destination,
+    )
+    await db.commit()
+    return TestNotificationResponse(
+        target_role=payload.target_role,
+        delivered=len(unique_user_ids),
+    )
 
 
 @router.patch("/{notification_id}/read", response_model=NotificationResponse)
