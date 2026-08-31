@@ -224,7 +224,7 @@ async def get_notification_preferences(
     )
 
 
-@router.put("/preferences", response_model=NotificationPreferenceResponse)
+@router.patch("/preferences", response_model=NotificationPreferenceResponse)
 async def update_notification_preferences(
     payload: NotificationPreferenceUpdate,
     user: User = Depends(current_user),
