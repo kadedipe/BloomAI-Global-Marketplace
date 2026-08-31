@@ -23,7 +23,6 @@ from .models import Order, OrderStatus, Product, Role, User
 from .notifications import (
     create_notification,
     notify_role,
-    notify_users,
     router as notifications_router,
 )
 from .payments import request as paystack_request, valid_webhook_signature
