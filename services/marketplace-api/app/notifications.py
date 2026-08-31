@@ -8,10 +8,18 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .database import get_db
-from .models import Notification, Role, User
+from .models import Notification, NotificationPreference, Role, User
 from .security import current_user
 
 router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
+
+CATEGORY_FIELDS = {
+    "account": "account_in_app",
+    "orders": "orders_in_app",
+    "payments": "payments_in_app",
+    "vendor_activity": "vendor_activity_in_app",
+    "system": "system_in_app",
+}
 
 
 class NotificationResponse(BaseModel):
@@ -31,6 +39,25 @@ class NotificationListResponse(BaseModel):
     unread_count: int
 
 
+class NotificationPreferenceResponse(BaseModel):
+    account_in_app: bool
+    orders_in_app: bool
+    payments_in_app: bool
+    vendor_activity_in_app: bool
+    system_in_app: bool
+    email_enabled: bool
+    email_delivery_available: bool = False
+    critical_admin_alerts_mandatory: bool
+
+
+class NotificationPreferenceUpdate(BaseModel):
+    account_in_app: bool = True
+    orders_in_app: bool = True
+    payments_in_app: bool = True
+    vendor_activity_in_app: bool = True
+    system_in_app: bool = True
+
+
 class TestNotificationRequest(BaseModel):
     target_role: Role
 
@@ -38,6 +65,45 @@ class TestNotificationRequest(BaseModel):
 class TestNotificationResponse(BaseModel):
     target_role: Role
     delivered: int
+
+
+def notification_category(type: str) -> str:
+    if type.startswith("account."):
+        return "account"
+    if type.startswith("order."):
+        return "orders"
+    if type.startswith("payment."):
+        return "payments"
+    if type.startswith("product.") or type.startswith("vendor."):
+        return "vendor_activity"
+    return "system"
+
+
+def critical_for_admin(type: str) -> bool:
+    return type.startswith("system.critical")
+
+
+async def get_or_create_preferences(db: AsyncSession, user_id: int) -> NotificationPreference:
+    preference = (
+        await db.execute(
+            select(NotificationPreference).where(NotificationPreference.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    if preference is None:
+        preference = NotificationPreference(user_id=user_id)
+        db.add(preference)
+        await db.flush()
+    return preference
+
+
+async def preference_allows(
+    db: AsyncSession, user: User, type: str, *, force: bool = False
+) -> bool:
+    if force or (user.role == Role.admin and critical_for_admin(type)):
+        return True
+    preference = await get_or_create_preferences(db, user.id)
+    field = CATEGORY_FIELDS[notification_category(type)]
+    return bool(getattr(preference, field))
 
 
 async def create_notification(
@@ -48,7 +114,11 @@ async def create_notification(
     title: str,
     message: str,
     link: str | None = None,
-) -> Notification:
+    force: bool = False,
+) -> Notification | None:
+    user = await db.get(User, user_id)
+    if not user or not await preference_allows(db, user, type, force=force):
+        return None
     notification = Notification(
         user_id=user_id,
         type=type,
@@ -68,16 +138,21 @@ async def notify_users(
     title: str,
     message: str,
     link: str | None = None,
-) -> None:
+    force: bool = False,
+) -> int:
+    delivered = 0
     for user_id in set(user_ids):
-        await create_notification(
+        created = await create_notification(
             db,
             user_id=user_id,
             type=type,
             title=title,
             message=message,
             link=link,
+            force=force,
         )
+        delivered += int(created is not None)
+    return delivered
 
 
 async def notify_role(
@@ -89,12 +164,12 @@ async def notify_role(
     message: str,
     link: str | None = None,
     exclude_user_ids: set[int] | None = None,
-) -> None:
+) -> int:
     excluded = exclude_user_ids or set()
     user_ids = (
         await db.execute(select(User.id).where(User.role == role))
     ).scalars().all()
-    await notify_users(
+    return await notify_users(
         db,
         {user_id for user_id in user_ids if user_id not in excluded},
         type=type,
@@ -134,6 +209,40 @@ async def list_notifications(
     return NotificationListResponse(items=list(items), unread_count=unread_count)
 
 
+@router.get("/preferences", response_model=NotificationPreferenceResponse)
+async def get_notification_preferences(
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    preference = await get_or_create_preferences(db, user.id)
+    await db.commit()
+    await db.refresh(preference)
+    return NotificationPreferenceResponse(
+        **{field: getattr(preference, field) for field in CATEGORY_FIELDS.values()},
+        email_enabled=preference.email_enabled,
+        critical_admin_alerts_mandatory=user.role == Role.admin,
+    )
+
+
+@router.put("/preferences", response_model=NotificationPreferenceResponse)
+async def update_notification_preferences(
+    payload: NotificationPreferenceUpdate,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    preference = await get_or_create_preferences(db, user.id)
+    for field, value in payload.model_dump().items():
+        setattr(preference, field, value)
+    preference.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(preference)
+    return NotificationPreferenceResponse(
+        **{field: getattr(preference, field) for field in CATEGORY_FIELDS.values()},
+        email_enabled=preference.email_enabled,
+        critical_admin_alerts_mandatory=user.role == Role.admin,
+    )
+
+
 @router.post("/test", response_model=TestNotificationResponse, status_code=201)
 async def send_test_notification(
     payload: TestNotificationRequest,
@@ -154,7 +263,7 @@ async def send_test_notification(
         )
 
     destination = "/admin.html" if payload.target_role == Role.admin else "/#market"
-    await notify_users(
+    delivered = await notify_users(
         db,
         unique_user_ids,
         type="system.test",
@@ -164,11 +273,12 @@ async def send_test_notification(
             "No order, payment, or marketplace analytics record was created."
         ),
         link=destination,
+        force=True,
     )
     await db.commit()
     return TestNotificationResponse(
         target_role=payload.target_role,
-        delivered=len(unique_user_ids),
+        delivered=delivered,
     )
 
 
