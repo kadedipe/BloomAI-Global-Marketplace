@@ -53,9 +53,13 @@ function NotificationCenter(){
 
   async function loadPreferences(){
     setSettingsError('');
-    const response=await api('/api/v1/notifications/preferences');
-    if(!response.ok){setSettingsError('Notification preferences could not be loaded.');return}
-    setPreferences(await response.json());
+    try{
+      const response=await api('/api/v1/notifications/preferences');
+      if(!response.ok)throw new Error('Notification preferences could not be loaded.');
+      setPreferences(await response.json());
+    }catch(reason){
+      setSettingsError(reason.message||'Notification preferences could not be loaded.');
+    }
   }
 
   useEffect(()=>{
@@ -98,11 +102,11 @@ function NotificationCenter(){
     setSaving(true);setSettingsError('');
     const payload=Object.fromEntries(preferenceFields.map(([field])=>[field,Boolean(preferences[field])]));
     try{
-      const response=await api('/api/v1/notifications/preferences',{method:'PUT',body:JSON.stringify(payload)});
+      const response=await api('/api/v1/notifications/preferences',{method:'PATCH',body:JSON.stringify(payload)});
       if(!response.ok)throw new Error('Notification preferences could not be saved.');
       setPreferences(await response.json());
       setSettingsOpen(false);
-    }catch(reason){setSettingsError(reason.message)}finally{setSaving(false)}
+    }catch(reason){setSettingsError(reason.message||'Notification preferences could not be saved.')}finally{setSaving(false)}
   }
 
   if(!authorized)return null;
