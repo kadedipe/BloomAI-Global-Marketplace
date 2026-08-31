@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     paystack_secret_key: str = ""
     paystack_callback_url: str = ""
     paystack_currencies: str = "NGN"
+    resend_api_key: str = ""
+    resend_from_email: str = ""
+    web_base_url: str = "http://localhost:5173"
     rate_limit_enabled: bool = True
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -62,6 +65,10 @@ class Settings(BaseSettings):
     @property
     def paystack_enabled(self) -> bool:
         return bool(self.paystack_secret_key and self.paystack_callback_url)
+
+    @property
+    def transactional_email_enabled(self) -> bool:
+        return bool(self.resend_api_key and self.resend_from_email)
 
 
 @lru_cache
