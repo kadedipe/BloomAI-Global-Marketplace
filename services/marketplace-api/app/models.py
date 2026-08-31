@@ -66,3 +66,20 @@ class Order(Base):
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     buyer: Mapped[User] = relationship()
     product: Mapped[Product] = relationship()
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    type: Mapped[str] = mapped_column(String(64))
+    title: Mapped[str] = mapped_column(String(160))
+    message: Mapped[str] = mapped_column(Text)
+    link: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    user: Mapped[User] = relationship()
