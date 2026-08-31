@@ -20,6 +20,12 @@ from .database import create_schema, get_db
 from .events import publish_event
 from .media import delete_product_image, upload_product_image
 from .models import Order, OrderStatus, Product, Role, User
+from .notifications import (
+    create_notification,
+    notify_role,
+    notify_users,
+    router as notifications_router,
+)
 from .payments import request as paystack_request, valid_webhook_signature
 from .protection import enforce_csrf_origin, rate_limit
 from .schemas import (
@@ -67,7 +73,7 @@ async def lifespan(_: FastAPI):
 docs_enabled = settings.environment != "production" or settings.enable_api_docs
 app = FastAPI(
     title=settings.app_name,
-    version="1.3.0",
+    version="1.4.0",
     docs_url="/docs" if docs_enabled else None,
     redoc_url="/redoc" if docs_enabled else None,
     openapi_url="/openapi.json" if docs_enabled else None,
@@ -82,6 +88,7 @@ app.add_middleware(
 )
 app.include_router(admin_router)
 app.include_router(executive_router)
+app.include_router(notifications_router)
 
 
 @app.middleware("http")
@@ -122,6 +129,24 @@ async def register(payload: RegisterRequest, request: Request, db: AsyncSession 
         await db.rollback()
         raise HTTPException(409, "Email is already registered")
     await db.refresh(user)
+    await create_notification(
+        db,
+        user_id=user.id,
+        type="account.welcome",
+        title="Welcome to BloomAI",
+        message="Your marketplace account is ready. Notifications about your activity will appear here.",
+        link="/#market",
+    )
+    await notify_role(
+        db,
+        Role.admin,
+        type="account.created",
+        title=f"New {user.role.value} joined",
+        message=f"{user.name} created a {user.role.value} account.",
+        link="/admin.html#participants",
+        exclude_user_ids={user.id},
+    )
+    await db.commit()
     return user
 
 
@@ -198,6 +223,24 @@ async def create_product(
         "product.created",
         {"product_id": product.id, "vendor_id": user.id, "name": product.name},
     )
+    await create_notification(
+        db,
+        user_id=user.id,
+        type="product.created",
+        title="Listing published",
+        message=f"{product.name} is now live in the BloomAI marketplace.",
+        link="/#market",
+    )
+    await notify_role(
+        db,
+        Role.admin,
+        type="vendor.activity",
+        title="New vendor listing",
+        message=f"{user.name} published {product.name}.",
+        link="/admin.html#activity",
+        exclude_user_ids={user.id},
+    )
+    await db.commit()
     return product
 
 
@@ -292,6 +335,32 @@ async def initialize_payment(
     db.add(order)
     await db.commit()
     await db.refresh(order)
+    await create_notification(
+        db,
+        user_id=user.id,
+        type="order.created",
+        title="Order started",
+        message=f"Your order for {product.name} is awaiting payment confirmation.",
+        link="/#market",
+    )
+    await create_notification(
+        db,
+        user_id=product.vendor_id,
+        type="order.created",
+        title="New order received",
+        message=f"A customer started an order for {product.name} ({product.currency} {total}).",
+        link="/#market",
+    )
+    await notify_role(
+        db,
+        Role.admin,
+        type="order.created",
+        title="New marketplace order",
+        message=f"Order #{order.id} was created for {product.name} ({product.currency} {total}).",
+        link="/admin.html#activity",
+        exclude_user_ids={user.id, product.vendor_id},
+    )
+    await db.commit()
     data = await paystack_request(
         "POST",
         "/transaction/initialize",
@@ -311,6 +380,7 @@ async def settle_order(reference: str, data: dict, db: AsyncSession) -> Order:
     order = (await db.execute(select(Order).where(Order.reference == reference))).scalar_one_or_none()
     if not order:
         raise HTTPException(404, "Order not found")
+    previous_status = order.status
     expected_amount = int(order.total * Decimal("100"))
     if data.get("status") != "success" or data.get("amount") != expected_amount or data.get("currency") != order.currency:
         order.status = OrderStatus.failed
@@ -318,6 +388,48 @@ async def settle_order(reference: str, data: dict, db: AsyncSession) -> Order:
         order.status = OrderStatus.paid
         order.provider_transaction_id = str(data.get("id"))
         order.paid_at = datetime.now(timezone.utc)
+    if order.status != previous_status:
+        product = await db.get(Product, order.product_id)
+        product_name = product.name if product else f"product #{order.product_id}"
+        if order.status == OrderStatus.paid:
+            buyer_title = "Payment confirmed"
+            buyer_message = f"Payment for {product_name} was confirmed. Your order is now paid."
+            vendor_title = "Order payment received"
+            vendor_message = f"Payment was confirmed for order #{order.id} for {product_name}."
+        else:
+            buyer_title = "Payment not confirmed"
+            buyer_message = f"Payment for {product_name} could not be confirmed."
+            vendor_title = "Order payment failed"
+            vendor_message = f"Payment failed for order #{order.id} for {product_name}."
+        await create_notification(
+            db,
+            user_id=order.buyer_id,
+            type=f"payment.{order.status.value}",
+            title=buyer_title,
+            message=buyer_message,
+            link="/#market",
+        )
+        if product:
+            await create_notification(
+                db,
+                user_id=product.vendor_id,
+                type=f"order.{order.status.value}",
+                title=vendor_title,
+                message=vendor_message,
+                link="/#market",
+            )
+        excluded = {order.buyer_id}
+        if product:
+            excluded.add(product.vendor_id)
+        await notify_role(
+            db,
+            Role.admin,
+            type=f"payment.{order.status.value}",
+            title=f"Order #{order.id} {order.status.value}",
+            message=f"Payment status for {product_name} changed to {order.status.value}.",
+            link="/admin.html#activity",
+            exclude_user_ids=excluded,
+        )
     await db.commit()
     await db.refresh(order)
     return order
