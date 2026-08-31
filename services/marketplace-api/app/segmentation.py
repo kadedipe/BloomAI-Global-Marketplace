@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, func
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -53,6 +53,14 @@ class ParticipantProfile(Base):
         Enum(ParticipantCategory), default=ParticipantCategory.unclassified, index=True
     )
     country: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    address_line1: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    region: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    postal_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
+    geocoding_source: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    geocoded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     industry: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

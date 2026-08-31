@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from app.executive import build_dashboard, pdf_bytes
 from app.models import OrderStatus, Role
+from app.segmentation import ParticipantCategory
 
 
 def user(uid, role, days_ago=0, name=None):
@@ -36,6 +37,27 @@ def order(oid, buyer_id, product_id, status, total, days_ago=0):
     )
 
 
+def profile(
+    user_id,
+    latitude=None,
+    longitude=None,
+    country="Uganda",
+    city="Kampala",
+    category=ParticipantCategory.unclassified,
+):
+    return SimpleNamespace(
+        user_id=user_id,
+        latitude=latitude,
+        longitude=longitude,
+        country=country,
+        city=city,
+        region=None,
+        organization_name=None,
+        geocoding_source="verified" if latitude is not None else None,
+        category=category,
+    )
+
+
 def test_executive_kpis_repeat_purchase_and_conversion():
     users = [user(1, Role.customer), user(2, Role.customer), user(10, Role.vendor)]
     products = [product(100, 10)]
@@ -60,6 +82,26 @@ def test_inactive_account_detection_uses_marketplace_activity():
     ids = {row["user_id"] for row in report["inactive_accounts"]}
     assert 1 in ids
     assert 10 not in ids
+
+
+def test_geographic_points_use_coordinates_and_preserve_country_fallback():
+    users = [user(1, Role.customer), user(2, Role.customer), user(10, Role.vendor)]
+    products = [product(100, 10)]
+    orders = [order(1, 1, 100, OrderStatus.paid, 75)]
+    profiles = {
+        1: profile(1, 0.3476, 32.5825, category=ParticipantCategory.individual_consumer),
+        2: profile(2, country="Kenya", city="Nairobi"),
+        10: profile(10, 0.3136, 32.5811, category=ParticipantCategory.botanical_garden),
+    }
+
+    report = build_dashboard(users, products, orders, profiles)
+
+    assert report["geographic_coverage"]["geocoded"] == 2
+    assert report["geographic_coverage"]["ungeocoded"] == 1
+    assert report["geographic_coverage"]["coverage_rate"] == 66.67
+    assert {point["user_id"] for point in report["geographic_points"]} == {1, 10}
+    assert next(point for point in report["geographic_points"] if point["user_id"] == 1)["value"] == 75.0
+    assert any(row["country"] == "Kenya" and row["customers"] == 1 for row in report["geography"])
 
 
 def test_pdf_export_is_valid_pdf_payload():
