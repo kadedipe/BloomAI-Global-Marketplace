@@ -23,11 +23,15 @@ def register_and_login(client: TestClient, email: str, role: str) -> None:
 
 
 def test_customer_can_upload_and_remove_optional_profile_photo(monkeypatch):
+    uploaded_public_ids = []
+
     async def fake_upload(image, user_id):
         assert image.content_type == "image/png"
+        public_id = f"bloomai/users/{user_id}/profile/avatar"
+        uploaded_public_ids.append(public_id)
         return {
             "image_url": f"https://images.example.test/users/{user_id}.png",
-            "image_public_id": f"bloomai/users/{user_id}/profile/avatar",
+            "image_public_id": public_id,
         }
 
     deleted = []
@@ -51,7 +55,7 @@ def test_customer_can_upload_and_remove_optional_profile_photo(monkeypatch):
         removed = client.delete("/api/v1/notifications/profile-photo")
         assert removed.status_code == 200
         assert removed.json()["avatar_url"] is None
-        assert deleted == ["bloomai/users/1/profile/avatar"]
+        assert deleted == uploaded_public_ids
 
 
 def test_vendor_profile_photo_is_optional(monkeypatch):
