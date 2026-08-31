@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
 from .admin import router as admin_router
+from .executive import router as executive_router
 from .config import get_settings
 from .database import create_schema, get_db
 from .events import publish_event
@@ -66,7 +67,7 @@ async def lifespan(_: FastAPI):
 docs_enabled = settings.environment != "production" or settings.enable_api_docs
 app = FastAPI(
     title=settings.app_name,
-    version="1.2.0",
+    version="1.3.0",
     docs_url="/docs" if docs_enabled else None,
     redoc_url="/redoc" if docs_enabled else None,
     openapi_url="/openapi.json" if docs_enabled else None,
@@ -80,6 +81,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
 )
 app.include_router(admin_router)
+app.include_router(executive_router)
 
 
 @app.middleware("http")
