@@ -26,6 +26,13 @@ class SegmentUpdate(BaseModel):
     organization_size: OrganizationSize
     category: ParticipantCategory
     country: str | None = Field(default=None, max_length=100)
+    address_line1: str | None = Field(default=None, max_length=180)
+    city: str | None = Field(default=None, max_length=100)
+    region: str | None = Field(default=None, max_length=100)
+    postal_code: str | None = Field(default=None, max_length=32)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    geocoding_source: str | None = Field(default=None, max_length=80)
     industry: str | None = Field(default=None, max_length=120)
 
 
@@ -48,6 +55,14 @@ def profile_payload(user: User, profile: ParticipantProfile | None) -> dict:
             profile.category.value if profile else ParticipantCategory.unclassified.value
         ),
         "country": profile.country if profile else None,
+        "address_line1": profile.address_line1 if profile else None,
+        "city": profile.city if profile else None,
+        "region": profile.region if profile else None,
+        "postal_code": profile.postal_code if profile else None,
+        "latitude": profile.latitude if profile else None,
+        "longitude": profile.longitude if profile else None,
+        "geocoding_source": profile.geocoding_source if profile else None,
+        "geocoded_at": profile.geocoded_at if profile else None,
         "industry": profile.industry if profile else None,
         "joined_at": user.created_at,
     }
@@ -254,6 +269,9 @@ async def update_segment(
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    if (payload.latitude is None) != (payload.longitude is None):
+        raise HTTPException(422, "Latitude and longitude must be provided together")
+
     user = await db.get(User, user_id)
     if not user or user.role == Role.admin:
         raise HTTPException(404, "Marketplace participant not found")
@@ -267,10 +285,22 @@ async def update_segment(
         profile = ParticipantProfile(user_id=user_id)
         db.add(profile)
 
+    coordinates_changed = (
+        profile.latitude != payload.latitude or profile.longitude != payload.longitude
+    )
     profile.organization_name = payload.organization_name
     profile.organization_size = payload.organization_size
     profile.category = payload.category
     profile.country = payload.country
+    profile.address_line1 = payload.address_line1
+    profile.city = payload.city
+    profile.region = payload.region
+    profile.postal_code = payload.postal_code
+    profile.latitude = payload.latitude
+    profile.longitude = payload.longitude
+    profile.geocoding_source = payload.geocoding_source if payload.latitude is not None else None
+    if coordinates_changed:
+        profile.geocoded_at = datetime.now(timezone.utc) if payload.latitude is not None else None
     profile.industry = payload.industry
     await db.commit()
     await db.refresh(profile)
