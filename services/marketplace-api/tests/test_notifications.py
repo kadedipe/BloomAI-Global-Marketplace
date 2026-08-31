@@ -4,10 +4,13 @@ import os
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.admin_bootstrap import bootstrap_admin
 from app.database import SessionLocal
 from app.main import app
+from app.models import User
+from app.notifications import create_notification
 
 
 ORIGIN = {"origin": "http://localhost:5173"}
@@ -35,6 +38,20 @@ async def create_admin(email: str, password: str = "strong-admin-password") -> N
             password=password,
             name="Notification Admin",
         )
+
+
+async def create_direct_notification(email: str, type: str) -> bool:
+    async with SessionLocal() as db:
+        user = (await db.execute(select(User).where(User.email == email))).scalar_one()
+        created = await create_notification(
+            db,
+            user_id=user.id,
+            type=type,
+            title="Preference test",
+            message="Preference filtering test",
+        )
+        await db.commit()
+        return created is not None
 
 
 def test_new_account_receives_welcome_notification():
@@ -65,6 +82,30 @@ def test_notification_can_be_marked_read_and_all_read():
 def test_notifications_require_authentication():
     with TestClient(app, headers=ORIGIN) as client:
         assert client.get("/api/v1/notifications").status_code == 401
+        assert client.get("/api/v1/notifications/preferences").status_code == 401
+
+
+def test_user_can_update_preferences_and_suppress_order_notifications():
+    email = "notifications-preferences@example.com"
+    with TestClient(app, headers=ORIGIN) as client:
+        register_and_login(client, email)
+        preferences = client.get("/api/v1/notifications/preferences")
+        assert preferences.status_code == 200
+        assert preferences.json()["orders_in_app"] is True
+        assert preferences.json()["email_delivery_available"] is False
+
+        payload = {
+            "account_in_app": True,
+            "orders_in_app": False,
+            "payments_in_app": True,
+            "vendor_activity_in_app": True,
+            "system_in_app": True,
+        }
+        response = client.put("/api/v1/notifications/preferences", json=payload)
+        assert response.status_code == 200
+        assert response.json()["orders_in_app"] is False
+        assert asyncio.run(create_direct_notification(email, "order.created")) is False
+        assert asyncio.run(create_direct_notification(email, "payment.paid")) is True
 
 
 def test_customer_cannot_send_test_notifications():
@@ -106,3 +147,25 @@ def test_admin_can_send_test_notification_to_customer_role():
         ).status_code == 200
         items = client.get("/api/v1/notifications").json()["items"]
         assert any(item["type"] == "system.test" for item in items)
+
+
+def test_admin_critical_alerts_bypass_system_preference():
+    email = "notifications-critical-admin@example.com"
+    password = "strong-admin-password"
+    asyncio.run(create_admin(email, password))
+    with TestClient(app, headers=ORIGIN) as client:
+        assert client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": password},
+        ).status_code == 200
+        payload = {
+            "account_in_app": False,
+            "orders_in_app": False,
+            "payments_in_app": False,
+            "vendor_activity_in_app": False,
+            "system_in_app": False,
+        }
+        response = client.put("/api/v1/notifications/preferences", json=payload)
+        assert response.status_code == 200
+        assert response.json()["critical_admin_alerts_mandatory"] is True
+        assert asyncio.run(create_direct_notification(email, "system.critical.database")) is True
