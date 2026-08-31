@@ -1,9 +1,16 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Bell,CheckCheck,LoaderCircle} from 'lucide-react';
+import {Bell,CheckCheck,LoaderCircle,Settings2,X} from 'lucide-react';
 import {createRoot} from 'react-dom/client';
 import './notifications.css';
 
 const API=(import.meta.env.VITE_API_URL||'http://localhost:8000').replace(/\/$/,'');
+const preferenceFields=[
+  ['account_in_app','Account activity','Account creation and profile-related updates'],
+  ['orders_in_app','Orders','New and updated marketplace orders'],
+  ['payments_in_app','Payments','Payment confirmations and failures'],
+  ['vendor_activity_in_app','Vendor activity','Listings and vendor marketplace activity'],
+  ['system_in_app','System','General BloomAI system notifications'],
+];
 
 async function api(path,options={}){
   const headers={'Content-Type':'application/json',...(options.headers||{})};
@@ -26,6 +33,10 @@ function NotificationCenter(){
   const [unread,setUnread]=useState(0);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState('');
+  const [settingsOpen,setSettingsOpen]=useState(false);
+  const [preferences,setPreferences]=useState(null);
+  const [saving,setSaving]=useState(false);
+  const [settingsError,setSettingsError]=useState('');
   const wrapper=useRef(null);
 
   async function load({silent=false}={}){
@@ -38,6 +49,13 @@ function NotificationCenter(){
       setAuthorized(true);setItems(data.items||[]);setUnread(data.unread_count||0);setError('');
     }catch(reason){if(authorized)setError(reason.message||'Notifications are temporarily unavailable.')}
     finally{if(!silent)setLoading(false)}
+  }
+
+  async function loadPreferences(){
+    setSettingsError('');
+    const response=await api('/api/v1/notifications/preferences');
+    if(!response.ok){setSettingsError('Notification preferences could not be loaded.');return}
+    setPreferences(await response.json());
   }
 
   useEffect(()=>{
@@ -75,6 +93,18 @@ function NotificationCenter(){
     }
   }
 
+  async function savePreferences(){
+    if(!preferences)return;
+    setSaving(true);setSettingsError('');
+    const payload=Object.fromEntries(preferenceFields.map(([field])=>[field,Boolean(preferences[field])]));
+    try{
+      const response=await api('/api/v1/notifications/preferences',{method:'PUT',body:JSON.stringify(payload)});
+      if(!response.ok)throw new Error('Notification preferences could not be saved.');
+      setPreferences(await response.json());
+      setSettingsOpen(false);
+    }catch(reason){setSettingsError(reason.message)}finally{setSaving(false)}
+  }
+
   if(!authorized)return null;
   const isAdmin=window.location.pathname.includes('admin');
   return <div className={`notification-center ${isAdmin?'notification-center-admin':''}`} ref={wrapper}>
@@ -82,8 +112,8 @@ function NotificationCenter(){
       <Bell/>{unread>0&&<span className="notification-badge">{unread>99?'99+':unread}</span>}
     </button>
     {open&&<section className="notification-popover" aria-label="Notifications">
-      <div className="notification-head"><div><strong>Notifications</strong><small>{unread?`${unread} unread`:'You are all caught up'}</small></div>{unread>0&&<button type="button" onClick={markAll}><CheckCheck/>Mark all read</button>}</div>
-      {loading&&items.length===0?<div className="notification-state"><LoaderCircle className="spin"/>Loading notifications…</div>:error?<div className="notification-state notification-error">{error}</div>:items.length===0?<div className="notification-state">No notifications yet.</div>:<div className="notification-list">{items.map(item=><button type="button" key={item.id} className={`notification-item ${item.read_at?'':'unread'}`} onClick={()=>markRead(item)}><span className="notification-dot"/><span className="notification-copy"><strong>{item.title}</strong><span>{item.message}</span><small>{relativeTime(item.created_at)}</small></span></button>)}</div>}
+      <div className="notification-head"><div><strong>Notifications</strong><small>{unread?`${unread} unread`:'You are all caught up'}</small></div><div className="notification-head-actions">{unread>0&&<button type="button" onClick={markAll}><CheckCheck/>Mark all read</button>}<button type="button" onClick={()=>{setSettingsOpen(true);loadPreferences()}}><Settings2/>Preferences</button></div></div>
+      {settingsOpen?<div className="notification-preferences"><div className="notification-preferences-title"><div><strong>Notification preferences</strong><small>Choose which categories appear in your BloomAI bell.</small></div><button type="button" aria-label="Close preferences" onClick={()=>setSettingsOpen(false)}><X/></button></div>{settingsError&&<p className="notification-preferences-error">{settingsError}</p>}{!preferences?<div className="notification-state"><LoaderCircle className="spin"/>Loading preferences…</div>:<>{preferenceFields.map(([field,label,description])=><label className="notification-preference-row" key={field}><span><strong>{label}</strong><small>{description}</small></span><input type="checkbox" checked={Boolean(preferences[field])} onChange={event=>setPreferences(current=>({...current,[field]:event.target.checked}))}/></label>)}{preferences.critical_admin_alerts_mandatory&&<p className="notification-preferences-note">Critical administrator alerts always remain enabled, even when general System notifications are turned off.</p>}<div className="notification-email-preview"><strong>Email delivery</strong><span>Coming next</span><small>Your preferences are ready for transactional email delivery, but BloomAI is not sending notification emails yet.</small></div><button className="notification-save-preferences" type="button" disabled={saving} onClick={savePreferences}>{saving?'Saving…':'Save preferences'}</button></>}</div>:loading&&items.length===0?<div className="notification-state"><LoaderCircle className="spin"/>Loading notifications…</div>:error?<div className="notification-state notification-error">{error}</div>:items.length===0?<div className="notification-state">No notifications yet.</div>:<div className="notification-list">{items.map(item=><button type="button" key={item.id} className={`notification-item ${item.read_at?'':'unread'}`} onClick={()=>markRead(item)}><span className="notification-dot"/><span className="notification-copy"><strong>{item.title}</strong><span>{item.message}</span><small>{relativeTime(item.created_at)}</small></span></button>)}</div>}
     </section>}
   </div>
 }
