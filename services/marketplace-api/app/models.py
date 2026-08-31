@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 from decimal import Decimal
-from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
@@ -81,5 +81,23 @@ class Notification(Base):
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    user: Mapped[User] = relationship()
+
+
+class NotificationPreference(Base):
+    __tablename__ = "notification_preferences"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    account_in_app: Mapped[bool] = mapped_column(Boolean, default=True)
+    orders_in_app: Mapped[bool] = mapped_column(Boolean, default=True)
+    payments_in_app: Mapped[bool] = mapped_column(Boolean, default=True)
+    vendor_activity_in_app: Mapped[bool] = mapped_column(Boolean, default=True)
+    system_in_app: Mapped[bool] = mapped_column(Boolean, default=True)
+    email_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
     user: Mapped[User] = relationship()
