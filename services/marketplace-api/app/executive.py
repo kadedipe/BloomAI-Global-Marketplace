@@ -2,7 +2,6 @@ import csv
 import io
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response, StreamingResponse
@@ -75,7 +74,6 @@ def build_dashboard(users, products, orders, profiles, months: int = 12, inactiv
     customers = [user for user in users if user.role == Role.customer]
     vendors = [user for user in users if user.role == Role.vendor]
     product_by_id = {product.id: product for product in products}
-    user_by_id = {user.id: user for user in users}
 
     revenue_by_month = defaultdict(lambda: {"revenue": 0.0, "orders": 0})
     for order in paid:
