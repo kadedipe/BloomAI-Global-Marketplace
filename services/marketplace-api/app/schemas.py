@@ -27,6 +27,7 @@ class UserResponse(BaseModel):
     email: EmailStr
     name: str
     role: Role
+    avatar_url: str | None = None
 
 
 class ProductCreate(BaseModel):

@@ -19,6 +19,8 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     name: Mapped[str] = mapped_column(String(120))
     role: Mapped[Role] = mapped_column(Enum(Role), default=Role.customer)
+    avatar_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    avatar_public_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

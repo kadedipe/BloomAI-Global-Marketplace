@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .config import get_settings
 from .database import get_db
 from .email_delivery import send_transactional_email
+from .media import delete_profile_image, upload_profile_image
 from .models import Notification, NotificationPreference, Role, User
+from .schemas import UserResponse
 from .security import current_user
 
 router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
@@ -235,6 +237,47 @@ async def update_notification_preferences(
     await db.commit()
     await db.refresh(preference)
     return preference_response(preference, user)
+
+
+@router.post("/profile-photo", response_model=UserResponse)
+async def upload_user_profile_photo(
+    image: UploadFile = File(...),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if user.role not in {Role.customer, Role.vendor}:
+        raise HTTPException(
+            status_code=403,
+            detail="Profile photos are available to customer and vendor accounts",
+        )
+    previous_public_id = user.avatar_public_id
+    uploaded = await upload_profile_image(image, user.id)
+    user.avatar_url = uploaded["image_url"]
+    user.avatar_public_id = uploaded["image_public_id"]
+    await db.commit()
+    await db.refresh(user)
+    if previous_public_id and previous_public_id != user.avatar_public_id:
+        await delete_profile_image(previous_public_id)
+    return user
+
+
+@router.delete("/profile-photo", response_model=UserResponse)
+async def remove_user_profile_photo(
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if user.role not in {Role.customer, Role.vendor}:
+        raise HTTPException(
+            status_code=403,
+            detail="Profile photos are available to customer and vendor accounts",
+        )
+    previous_public_id = user.avatar_public_id
+    user.avatar_url = None
+    user.avatar_public_id = None
+    await db.commit()
+    await db.refresh(user)
+    await delete_profile_image(previous_public_id)
+    return user
 
 
 @router.post("/test", response_model=TestNotificationResponse, status_code=201)
