@@ -93,9 +93,11 @@ def build_dashboard(users, products, orders, profiles, months: int = 12, inactiv
     repeat_buyers = [customer_id for customer_id, count in customer_orders.items() if count >= 2]
 
     vendor_stats = defaultdict(lambda: {"revenue": 0.0, "orders": 0, "customers": set(), "products": 0})
+    customer_spend = defaultdict(float)
     for product in products:
         vendor_stats[product.vendor_id]["products"] += 1
     for order in paid:
+        customer_spend[order.buyer_id] += float(order.total)
         product = product_by_id.get(order.product_id)
         if not product:
             continue
@@ -118,10 +120,37 @@ def build_dashboard(users, products, orders, profiles, months: int = 12, inactiv
     vendor_ranking.sort(key=lambda item: (item["revenue"], item["paid_orders"]), reverse=True)
 
     geography = defaultdict(lambda: {"customers": 0, "vendors": 0, "revenue": 0.0})
+    geographic_points = []
+    geocoded_count = 0
     for user in customers + vendors:
         profile = profiles.get(user.id)
         country = (getattr(profile, "country", None) or "Unclassified").strip()
         geography[country]["customers" if user.role == Role.customer else "vendors"] += 1
+        latitude = getattr(profile, "latitude", None)
+        longitude = getattr(profile, "longitude", None)
+        if latitude is not None and longitude is not None:
+            geocoded_count += 1
+            value = (
+                customer_spend[user.id]
+                if user.role == Role.customer
+                else vendor_stats[user.id]["revenue"]
+            )
+            geographic_points.append(
+                {
+                    "user_id": user.id,
+                    "name": user.name,
+                    "role": user.role.value,
+                    "organization_name": getattr(profile, "organization_name", None),
+                    "category": getattr(getattr(profile, "category", None), "value", "unclassified"),
+                    "country": getattr(profile, "country", None),
+                    "city": getattr(profile, "city", None),
+                    "region": getattr(profile, "region", None),
+                    "latitude": float(latitude),
+                    "longitude": float(longitude),
+                    "geocoding_source": getattr(profile, "geocoding_source", None),
+                    "value": round(value, 2),
+                }
+            )
     for order in paid:
         profile = profiles.get(order.buyer_id)
         country = (getattr(profile, "country", None) or "Unclassified").strip()
@@ -131,6 +160,7 @@ def build_dashboard(users, products, orders, profiles, months: int = 12, inactiv
         for country, values in geography.items()
     ]
     geography_rows.sort(key=lambda item: (item["revenue"], item["customers"] + item["vendors"]), reverse=True)
+    geographic_points.sort(key=lambda item: item["value"], reverse=True)
 
     current_cutoff = now - timedelta(days=30)
     previous_cutoff = now - timedelta(days=60)
@@ -177,12 +207,14 @@ def build_dashboard(users, products, orders, profiles, months: int = 12, inactiv
     gross_revenue = sum(float(order.total) for order in paid)
     total_orders = len(orders)
     paid_orders = len(paid)
+    marketplace_participants = len(customers) + len(vendors)
     return {
         "generated_at": now,
         "definitions": {
             "conversion_rate": "Paid orders divided by all initiated orders.",
             "retention_rate": "Customers with 2+ paid purchases divided by customers with at least 1 paid purchase.",
             "inactive_account": f"No recorded marketplace activity for at least {inactive_days} days.",
+            "geographic_map": "Map markers use stored participant latitude/longitude. Country aggregates remain available for records without coordinates.",
         },
         "kpis": {
             "gross_revenue": round(gross_revenue, 2),
@@ -192,12 +224,21 @@ def build_dashboard(users, products, orders, profiles, months: int = 12, inactiv
             "active_buyers": len(buyers),
             "repeat_buyers": len(repeat_buyers),
             "inactive_accounts": len(inactive),
+            "geocoded_participants": geocoded_count,
+            "geocoding_coverage_rate": pct(geocoded_count, marketplace_participants),
         },
         "revenue_trends": revenue_trends,
         "customer_acquisition": [{"month": key, "new_customers": acquisition[key]} for key in sorted(acquisition)],
         "retention": {"buyers": len(buyers), "repeat_buyers": len(repeat_buyers), "rate": pct(len(repeat_buyers), len(buyers))},
         "vendor_ranking": vendor_ranking[:25],
         "geography": geography_rows,
+        "geographic_points": geographic_points[:500],
+        "geographic_coverage": {
+            "geocoded": geocoded_count,
+            "total_participants": marketplace_participants,
+            "coverage_rate": pct(geocoded_count, marketplace_participants),
+            "ungeocoded": max(0, marketplace_participants - geocoded_count),
+        },
         "category_growth": category_rows,
         "inactive_accounts": inactive[:200],
     }
@@ -234,6 +275,10 @@ async def export_csv(_=Depends(require_admin), db: AsyncSession = Depends(get_db
     writer.writerow(["Country", "Customers", "Vendors", "Revenue"])
     for row in report["geography"]:
         writer.writerow([row["country"], row["customers"], row["vendors"], row["revenue"]])
+    writer.writerow([])
+    writer.writerow(["Mapped participant", "Role", "City", "Region", "Country", "Latitude", "Longitude", "Value"])
+    for row in report["geographic_points"]:
+        writer.writerow([row["name"], row["role"], row["city"] or "", row["region"] or "", row["country"] or "", row["latitude"], row["longitude"], row["value"]])
     payload = output.getvalue().encode("utf-8")
     return StreamingResponse(io.BytesIO(payload), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=bloomai-executive-report.csv"})
 
@@ -254,6 +299,7 @@ async def export_pdf(_=Depends(require_admin), db: AsyncSession = Depends(get_db
         f"Active buyers: {kpi['active_buyers']}",
         f"Repeat buyers: {kpi['repeat_buyers']}",
         f"Inactive accounts: {kpi['inactive_accounts']}",
+        f"Geocoding coverage: {kpi['geocoding_coverage_rate']:.2f}% ({kpi['geocoded_participants']} participants)",
         "",
         "Top vendors by revenue:",
     ]
