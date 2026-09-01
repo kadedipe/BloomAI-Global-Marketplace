@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Literal
 
 import httpx
@@ -142,6 +143,14 @@ async def recent_context(db: AsyncSession, user: User, order_id: int | None) -> 
     return "\n".join(lines), orders[0].id if len(orders) == 1 else order_id
 
 
+def plain_text_reply(text: str) -> str:
+    """Normalize common model Markdown because the support widget renders plain text."""
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    text = re.sub(r"__(.+?)__", r"\1", text)
+    text = re.sub(r"(?m)^\s*[-*]\s+", "- ", text)
+    return text.strip()
+
+
 def fallback_reply(category: SupportCategory, context: str, critical: bool) -> str:
     prefix = {
         "payment": "I can help you check payment status and the next safe step.",
@@ -152,7 +161,7 @@ def fallback_reply(category: SupportCategory, context: str, critical: bool) -> s
         "vendor_product": "I can help vendors troubleshoot listings, inventory and order activity.",
         "general": "I can help with BloomAI marketplace support questions.",
     }[category]
-    extra = " This looks sensitive enough to escalate to an administrator." if critical else ""
+    extra = " This looks sensitive enough to escalate to a BloomAI administrator." if critical else ""
     return f"{prefix}{extra}\n\nCurrent BloomAI context:\n{context}"
 
 
@@ -163,10 +172,16 @@ async def ai_reply(*, message: str, role: Role, category: SupportCategory, conte
     system_prompt = (
         "You are BloomAI Support, a concise marketplace support assistant for customers and vendors. "
         "Use only the supplied BloomAI account/order context plus general explanations of the visible workflow. "
-        "Never claim a payment, refund, shipment, account change or notification was performed unless the context says so. "
+        "BloomAI's only human escalation destination supplied to you is a BloomAI administrator/support contact. "
+        "Never invent internal departments, teams, security teams, payment investigators, chargeback services, provider checks, "
+        "staff capabilities, or organizational processes that are not explicitly present in the supplied context. "
+        "When escalation is appropriate, say only that the user should escalate to a BloomAI administrator/support contact. "
+        "Never claim a payment, refund, shipment, account change, notification, provider investigation, chargeback check, "
+        "or other action was performed unless the supplied context explicitly says so. "
         "Never request passwords, card numbers, OTPs, API keys or other secrets. "
         "For payment/refund disputes, unauthorized activity, account takeover, or unresolved provider states, recommend escalation. "
         "Do not invent tracking numbers, policies, tax rates, shipping fees, delivery promises, provider confirmations or database state. "
+        "Return plain text only. Do not use Markdown, HTML, bold markers, headings, tables or code fences. "
         "Keep the answer practical and under 180 words."
     )
     payload = {
@@ -197,7 +212,7 @@ async def ai_reply(*, message: str, role: Role, category: SupportCategory, conte
             response.raise_for_status()
             data = response.json()
         text = data["choices"][0]["message"]["content"].strip()
-        return text[:4000] if text else None
+        return plain_text_reply(text[:4000]) if text else None
     except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError):
         logger.exception("BloomAI support AI provider request failed")
         return None
