@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import Depends, HTTPException
@@ -9,10 +10,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import hardening
 from .database import get_db
-from .models import Order, OrderStatus, Role, User
+from .models import FulfillmentStatus, Order, OrderStatus, Role, User
 from .security import current_user
 
 logger = logging.getLogger(__name__)
+
+
+def provider_checkout_fields(provider_data: dict) -> tuple[str, str]:
+    """Extract only the Paystack fields BloomAI exposes to the browser.
+
+    Paystack also returns its own `reference`. BloomAI owns the canonical order reference,
+    so blindly expanding provider data into CheckoutResponse can pass `reference` twice and
+    raise a TypeError after the database transaction has already committed.
+    """
+    authorization_url = provider_data.get("authorization_url")
+    access_code = provider_data.get("access_code")
+    if not isinstance(authorization_url, str) or not authorization_url:
+        raise HTTPException(
+            status_code=502, detail="Payment provider returned no authorization URL"
+        )
+    if not isinstance(access_code, str) or not access_code:
+        raise HTTPException(
+            status_code=502, detail="Payment provider returned no checkout access code"
+        )
+    return authorization_url, access_code
 
 
 async def hardened_checkout(
@@ -20,11 +41,7 @@ async def hardened_checkout(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> hardening.CheckoutResponse:
-    """Create a checkout without letting post-commit side effects destroy the response.
-
-    Order creation, inventory reservation, and Paystack initialization are the authoritative
-    transaction. Notifications are deliberately best-effort after that transaction commits.
-    """
+    """Create a checkout without letting post-commit side effects destroy the response."""
     if user.role not in {Role.customer, Role.vendor}:
         raise HTTPException(status_code=403, detail="Customer or vendor account required")
 
@@ -104,6 +121,7 @@ async def hardened_checkout(
                 },
             },
         )
+        authorization_url, access_code = provider_checkout_fields(provider_data)
     except HTTPException:
         await db.rollback()
         raise
@@ -114,21 +132,19 @@ async def hardened_checkout(
             status_code=502, detail="Payment provider initialization failed"
         )
 
-    # Commit the authoritative commerce state before optional notification delivery.
     await db.commit()
 
-    # Build the response immediately from committed state and provider data. From this point
-    # onward, notification/email failures must never make the browser believe checkout failed.
     response = hardening.CheckoutResponse(
         order_id=order.id,
         reference=reference,
+        authorization_url=authorization_url,
+        access_code=access_code,
         reservation_expires_at=order.reservation_expires_at,
         subtotal=subtotal,
         shipping_amount=shipping,
         tax_amount=tax,
         total=total,
         currency=product.currency,
-        **provider_data,
     )
 
     try:
@@ -171,3 +187,75 @@ async def hardened_checkout(
         )
 
     return response
+
+
+async def hardened_retry_payment(
+    order_id: int,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+) -> hardening.CheckoutResponse:
+    """Initialize Paystack for an existing order without duplicating provider fields."""
+    await hardening.expire_reservations(db)
+    order = await hardening.locked_order(db, order_id)
+    if not order or order.buyer_id != user.id:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.status not in {OrderStatus.pending, OrderStatus.failed}:
+        raise HTTPException(status_code=409, detail="This order cannot be sent for payment")
+
+    product = await hardening.locked_product(db, order.product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    if not order.inventory_reserved:
+        hardening.reserve(product, order)
+    else:
+        order.reservation_expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=hardening.settings.order_reservation_minutes
+        )
+
+    reference = f"bloom-{uuid.uuid4().hex}"
+    try:
+        provider_data = await hardening.paystack_request(
+            "POST",
+            "/transaction/initialize",
+            json={
+                "email": user.email,
+                "amount": int(order.total * Decimal("100")),
+                "currency": order.currency,
+                "reference": reference,
+                "callback_url": hardening.settings.paystack_callback_url,
+                "metadata": {
+                    "order_id": order.id,
+                    "product_id": product.id,
+                    "buyer_id": user.id,
+                },
+            },
+        )
+        authorization_url, access_code = provider_checkout_fields(provider_data)
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception:
+        await db.rollback()
+        logger.exception("Unexpected retry-payment provider failure")
+        raise HTTPException(
+            status_code=502, detail="Payment provider initialization failed"
+        )
+
+    order.reference = reference
+    order.status = OrderStatus.pending
+    order.fulfillment_status = FulfillmentStatus.unfulfilled
+    await db.commit()
+
+    return hardening.CheckoutResponse(
+        order_id=order.id,
+        reference=reference,
+        authorization_url=authorization_url,
+        access_code=access_code,
+        reservation_expires_at=order.reservation_expires_at,
+        subtotal=order.subtotal or hardening.money(order.unit_price * order.quantity),
+        shipping_amount=order.shipping_amount,
+        tax_amount=order.tax_amount,
+        total=order.total,
+        currency=order.currency,
+    )
