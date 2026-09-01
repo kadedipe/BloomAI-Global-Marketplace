@@ -37,6 +37,8 @@ class ProductCreate(BaseModel):
     currency: str = Field(default="USD", pattern=r"^[A-Z]{3}$")
     image_url: str | None = None
     image_public_id: str | None = Field(default=None, max_length=512)
+    inventory_quantity: int | None = Field(default=None, ge=0, le=1000000)
+    is_active: bool = True
 
 
 class ProductUpdate(BaseModel):
@@ -46,6 +48,8 @@ class ProductUpdate(BaseModel):
     currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
     image_url: str | None = None
     image_public_id: str | None = Field(default=None, max_length=512)
+    inventory_quantity: int | None = Field(default=None, ge=0, le=1000000)
+    is_active: bool | None = None
 
 
 class ProductResponse(ProductCreate):
