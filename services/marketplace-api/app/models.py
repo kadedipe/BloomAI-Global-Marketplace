@@ -135,3 +135,42 @@ class NotificationPreference(Base):
     email_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     user: Mapped[User] = relationship()
+
+
+class SupportCaseStatus(str, enum.Enum):
+    open = "open"
+    in_progress = "in_progress"
+    waiting_on_user = "waiting_on_user"
+    resolved = "resolved"
+    closed = "closed"
+
+
+class SupportCasePriority(str, enum.Enum):
+    normal = "normal"
+    high = "high"
+    critical = "critical"
+
+
+class SupportCase(Base):
+    __tablename__ = "support_cases"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id", ondelete="SET NULL"), nullable=True, index=True)
+    category: Mapped[str] = mapped_column(String(64), default="general", index=True)
+    subject: Mapped[str] = mapped_column(String(180))
+    status: Mapped[SupportCaseStatus] = mapped_column(Enum(SupportCaseStatus), default=SupportCaseStatus.open, index=True)
+    priority: Mapped[SupportCasePriority] = mapped_column(Enum(SupportCasePriority), default=SupportCasePriority.normal, index=True)
+    assigned_admin_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    last_message_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SupportCaseMessage(Base):
+    __tablename__ = "support_case_messages"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_id: Mapped[int] = mapped_column(ForeignKey("support_cases.id", ondelete="CASCADE"), index=True)
+    author_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    author_role: Mapped[str] = mapped_column(String(32))
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
