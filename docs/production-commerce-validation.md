@@ -22,11 +22,13 @@ Required core values:
 - `SHIPPING_FREE_THRESHOLD=<approved threshold or 0>`
 - `SALES_TAX_PERCENT=<approved tax rate or 0>`
 
-Tracking integration:
+Optional AfterShip Tracking integration:
 
 - `AFTERSHIP_API_KEY=<AfterShip Tracking API key>`
 - `AFTERSHIP_WEBHOOK_SECRET=<AfterShip Tracking webhook secret>`
 - `AFTERSHIP_API_VERSION=2026-07`
+
+AfterShip is not required for commerce readiness. If neither AfterShip credential is configured, BloomAI uses manual carrier/tracking fulfillment and readiness reports a warning instead of a blocker. If either AfterShip credential is supplied, both the API key and webhook secret are required so a partially configured provider cannot be treated as production-ready.
 
 The Event Worker must have both the production `DATABASE_URL` and `REDIS_URL`; reservation expiry now uses PostgreSQL as well as the existing event queue.
 
@@ -38,14 +40,17 @@ After deployment, sign in as an administrator and call:
 
 `GET /api/v1/admin/commerce/readiness`
 
-The response returns the exact public webhook URLs without returning any secret value. Configure the providers with those URLs:
+The response returns the exact public webhook URLs without returning any secret value. Configure Paystack with:
 
-- Paystack: `https://<api-domain>/api/v1/payments/webhook`
-- AfterShip Tracking: `https://<api-domain>/api/v1/shipping/aftership/webhook`
+- `https://<api-domain>/api/v1/payments/webhook`
+
+When AfterShip Tracking is enabled for the deployment, configure:
+
+- `https://<api-domain>/api/v1/shipping/aftership/webhook`
 
 Paystack events are validated with the `x-paystack-signature` HMAC before they are processed. The commerce handler accepts `charge.success` plus refund lifecycle events (`refund.pending`, `refund.processing`, `refund.needs-attention`, `refund.failed`, and `refund.processed`).
 
-AfterShip Tracking webhooks are validated using `aftership-hmac-sha256`. Enable shipment-status tracking updates and use the provider's test-webhook facility to confirm a 2xx response before a real shipment is used.
+AfterShip Tracking webhooks are validated using `aftership-hmac-sha256` when the integration is enabled.
 
 ## 3. Readiness check
 
@@ -60,7 +65,7 @@ export BLOOMAI_ADMIN_PASSWORD="<admin-password>"
 python scripts/validate_production_commerce.py
 ```
 
-The command checks live/ready health, authenticates the administrator, and evaluates production database, HTTPS, Paystack, AfterShip, reservation, shipping, and tax configuration. It never prints the admin password, Paystack key, AfterShip key, webhook secret, or database URL.
+The command checks live/ready health, authenticates the administrator, and evaluates production database, HTTPS, Paystack, reservation, shipping, and tax configuration. AfterShip state is reported as an optional provider: fully absent configuration is a warning, while partial configuration is a blocker. The command never prints the admin password, Paystack key, AfterShip key, webhook secret, or database URL.
 
 If Paystack reports `mode: test`, complete the first lifecycle with Paystack test credentials. If it reports `mode: live`, use a deliberately controlled low-value product and account. Do not use an arbitrary customer's real order as a validation transaction.
 
@@ -74,8 +79,8 @@ Use dedicated customer and vendor validation accounts whose email inboxes you co
 4. Confirm customer/vendor/admin in-app notifications and any enabled transactional email notifications.
 5. Confirm the receipt endpoint becomes available and shows the same order total/currency.
 6. Confirm executive analytics include the paid order and its revenue exactly once.
-7. Vendor marks the order shipped with a controlled carrier and tracking number. When AfterShip is configured, confirm a provider tracking ID/status is stored.
-8. Use AfterShip's test webhook or the controlled shipment to produce a tracking update. Confirm the buyer notification and tracking status update. A delivered event should move fulfillment to delivered and set `delivered_at`.
+7. Vendor marks the order shipped with a controlled carrier and tracking number. When AfterShip is configured, confirm a provider tracking ID/status is stored; otherwise continue with the manual carrier/tracking flow.
+8. If AfterShip is enabled, use its test webhook or a controlled shipment to produce a tracking update and confirm the tracking status update. Without AfterShip, validate the manual shipment state and buyer-facing fulfillment data instead.
 9. Customer requests a refund. Vendor/admin approves it. Administrator executes the Paystack refund.
 10. Confirm Paystack refund webhook transitions eventually reconcile to `refund.processed`, `refund_status=refunded`, and `refund_processed_at` is present. Failed or needs-attention events must not be reported as a completed refund.
 
@@ -97,7 +102,8 @@ Production commerce validation is complete only when all of the following are tr
 
 - Marketplace API and Event Worker deploy successfully and both can reach production Postgres.
 - Commerce readiness has no blockers.
-- Paystack and AfterShip test webhooks receive HTTP 2xx and invalid signatures receive HTTP 401.
+- Paystack test webhook receives HTTP 2xx and invalid signatures receive HTTP 401.
+- If AfterShip is enabled, its webhook also receives HTTP 2xx and invalid signatures receive HTTP 401; otherwise the manual carrier/tracking path is validated.
 - A controlled checkout reserves stock once; payment consumes the reservation once; no oversell or duplicate decrement occurs.
 - Stored subtotal + shipping + tax equals total and matches the amount verified by Paystack.
 - Receipt and executive analytics agree with the paid order.
