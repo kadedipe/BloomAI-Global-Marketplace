@@ -13,7 +13,17 @@ from .config import get_settings
 from .database import get_db
 from .email_delivery import send_transactional_email
 from .media import delete_profile_image, upload_profile_image
-from .models import Notification, NotificationPreference, Order, OrderStatus, Product, Role, User
+from .models import (
+    FulfillmentStatus,
+    Notification,
+    NotificationPreference,
+    Order,
+    OrderStatus,
+    Product,
+    RefundStatus,
+    Role,
+    User,
+)
 from .payments import request as paystack_request
 from .schemas import UserResponse
 from .security import current_user
@@ -112,6 +122,15 @@ class OrderSummaryResponse(BaseModel):
     total: Decimal
     currency: str
     status: OrderStatus
+    fulfillment_status: FulfillmentStatus
+    carrier: str | None
+    tracking_number: str | None
+    shipped_at: datetime | None
+    delivered_at: datetime | None
+    refund_status: RefundStatus
+    refund_reason: str | None
+    refund_requested_at: datetime | None
+    refund_processed_at: datetime | None
     recipient_name: str | None
     phone: str | None
     address_line1: str | None
@@ -151,7 +170,9 @@ async def get_or_create_preferences(db: AsyncSession, user_id: int) -> Notificat
     return preference
 
 
-async def delivery_preferences(db: AsyncSession, user: User, type: str, *, force: bool = False) -> tuple[bool, bool]:
+async def delivery_preferences(
+    db: AsyncSession, user: User, type: str, *, force: bool = False
+) -> tuple[bool, bool]:
     preference = await get_or_create_preferences(db, user.id)
     mandatory = user.role == Role.admin and critical_for_admin(type)
     category_field = CATEGORY_FIELDS[notification_category(type)]
@@ -176,7 +197,9 @@ async def create_notification(
     in_app, email = await delivery_preferences(db, user, type, force=force)
     notification = None
     if in_app:
-        notification = Notification(user_id=user_id, type=type, title=title, message=message, link=link)
+        notification = Notification(
+            user_id=user_id, type=type, title=title, message=message, link=link
+        )
         db.add(notification)
     if email and settings.transactional_email_enabled:
         await send_transactional_email(to=user.email, subject=title, message=message, link=link)
@@ -196,7 +219,13 @@ async def notify_users(
     delivered = 0
     for user_id in set(user_ids):
         created = await create_notification(
-            db, user_id=user_id, type=type, title=title, message=message, link=link, force=force
+            db,
+            user_id=user_id,
+            type=type,
+            title=title,
+            message=message,
+            link=link,
+            force=force,
         )
         delivered += int(created is not None)
     return delivered
@@ -224,13 +253,42 @@ async def notify_role(
     )
 
 
-def preference_response(preference: NotificationPreference, user: User) -> NotificationPreferenceResponse:
+def preference_response(
+    preference: NotificationPreference, user: User
+) -> NotificationPreferenceResponse:
     return NotificationPreferenceResponse(
         **{field: getattr(preference, field) for field in CATEGORY_FIELDS.values()},
         email_enabled=preference.email_enabled,
         email_delivery_available=settings.transactional_email_enabled,
         critical_admin_alerts_mandatory=user.role == Role.admin,
     )
+
+
+def ensure_available(product: Product, quantity: int) -> None:
+    if not product.is_active:
+        raise HTTPException(status_code=409, detail="This listing is currently unavailable")
+    if product.inventory_quantity is not None and product.inventory_quantity < quantity:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Only {product.inventory_quantity} unit(s) are currently available",
+        )
+
+
+def reserve_inventory(product: Product, order: Order) -> None:
+    if order.inventory_reserved:
+        return
+    ensure_available(product, order.quantity)
+    if product.inventory_quantity is not None:
+        product.inventory_quantity -= order.quantity
+        order.inventory_reserved = True
+
+
+def release_inventory(product: Product | None, order: Order) -> None:
+    if not product or not order.inventory_reserved:
+        return
+    if product.inventory_quantity is not None:
+        product.inventory_quantity += order.quantity
+    order.inventory_reserved = False
 
 
 async def order_summary(db: AsyncSession, order: Order) -> OrderSummaryResponse:
@@ -252,6 +310,15 @@ async def order_summary(db: AsyncSession, order: Order) -> OrderSummaryResponse:
         total=order.total,
         currency=order.currency,
         status=order.status,
+        fulfillment_status=order.fulfillment_status,
+        carrier=order.carrier,
+        tracking_number=order.tracking_number,
+        shipped_at=order.shipped_at,
+        delivered_at=order.delivered_at,
+        refund_status=order.refund_status,
+        refund_reason=order.refund_reason,
+        refund_requested_at=order.refund_requested_at,
+        refund_processed_at=order.refund_processed_at,
         recipient_name=order.recipient_name,
         phone=order.phone,
         address_line1=order.address_line1,
@@ -276,7 +343,11 @@ async def list_notifications(
     if unread_only:
         query = query.where(Notification.read_at.is_(None))
     items = (
-        (await db.execute(query.order_by(Notification.created_at.desc(), Notification.id.desc()).limit(limit)))
+        (
+            await db.execute(
+                query.order_by(Notification.created_at.desc(), Notification.id.desc()).limit(limit)
+            )
+        )
         .scalars()
         .all()
     )
@@ -309,7 +380,9 @@ async def update_notification_preferences(
     preference = await get_or_create_preferences(db, user.id)
     changes = payload.model_dump()
     if changes["email_enabled"] and not settings.transactional_email_enabled:
-        raise HTTPException(status_code=409, detail="Transactional email delivery is not configured")
+        raise HTTPException(
+            status_code=409, detail="Transactional email delivery is not configured"
+        )
     for field, value in changes.items():
         setattr(preference, field, value)
     preference.updated_at = datetime.now(timezone.utc)
@@ -325,7 +398,10 @@ async def upload_user_profile_photo(
     db: AsyncSession = Depends(get_db),
 ):
     if user.role not in {Role.customer, Role.vendor}:
-        raise HTTPException(status_code=403, detail="Profile photos are available to customer and vendor accounts")
+        raise HTTPException(
+            status_code=403,
+            detail="Profile photos are available to customer and vendor accounts",
+        )
     previous_public_id = user.avatar_public_id
     uploaded = await upload_profile_image(image, user.id)
     user.avatar_url = uploaded["image_url"]
@@ -342,7 +418,10 @@ async def remove_user_profile_photo(
     user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
 ):
     if user.role not in {Role.customer, Role.vendor}:
-        raise HTTPException(status_code=403, detail="Profile photos are available to customer and vendor accounts")
+        raise HTTPException(
+            status_code=403,
+            detail="Profile photos are available to customer and vendor accounts",
+        )
     previous_public_id = user.avatar_public_id
     user.avatar_url = None
     user.avatar_public_id = None
@@ -360,17 +439,25 @@ async def send_test_notification(
 ):
     if user.role != Role.admin:
         raise HTTPException(status_code=403, detail="Administrator access required")
-    user_ids = (await db.execute(select(User.id).where(User.role == payload.target_role))).scalars().all()
+    user_ids = (
+        await db.execute(select(User.id).where(User.role == payload.target_role))
+    ).scalars().all()
     unique_user_ids = set(user_ids)
     if not unique_user_ids:
-        raise HTTPException(status_code=404, detail=f"No {payload.target_role.value} accounts are available for notification testing")
+        raise HTTPException(
+            status_code=404,
+            detail=f"No {payload.target_role.value} accounts are available for notification testing",
+        )
     destination = "/admin.html" if payload.target_role == Role.admin else "/#market"
     delivered = await notify_users(
         db,
         unique_user_ids,
         type="system.test",
         title="BloomAI notification test",
-        message="This is an administrator-initiated test notification. No order, payment, or marketplace analytics record was created.",
+        message=(
+            "This is an administrator-initiated test notification. "
+            "No order, payment, or marketplace analytics record was created."
+        ),
         link=destination,
         force=True,
     )
@@ -419,9 +506,15 @@ async def checkout_order(
         raise HTTPException(status_code=404, detail="Product not found")
     if product.vendor_id == user.id:
         raise HTTPException(status_code=409, detail="Vendors cannot purchase their own product")
-    supported = {item.strip().upper() for item in settings.paystack_currencies.split(",")}
+    ensure_available(product, payload.quantity)
+    supported = {
+        item.strip().upper() for item in settings.paystack_currencies.split(",")
+    }
     if product.currency not in supported:
-        raise HTTPException(status_code=422, detail=f"Paystack checkout is not enabled for {product.currency}")
+        raise HTTPException(
+            status_code=422,
+            detail=f"Paystack checkout is not enabled for {product.currency}",
+        )
 
     total = product.price * payload.quantity
     reference = f"bloom-{uuid.uuid4().hex}"
@@ -440,6 +533,7 @@ async def checkout_order(
         status=OrderStatus.pending,
         **values,
     )
+    reserve_inventory(product, order)
     db.add(order)
     await db.flush()
     try:
@@ -452,7 +546,11 @@ async def checkout_order(
                 "currency": product.currency,
                 "reference": reference,
                 "callback_url": settings.paystack_callback_url,
-                "metadata": {"order_id": order.id, "product_id": product.id, "buyer_id": user.id},
+                "metadata": {
+                    "order_id": order.id,
+                    "product_id": product.id,
+                    "buyer_id": user.id,
+                },
             },
         )
     except HTTPException:
@@ -496,7 +594,14 @@ async def my_orders(
     db: AsyncSession = Depends(get_db),
 ):
     orders = (
-        (await db.execute(select(Order).where(Order.buyer_id == user.id).order_by(Order.created_at.desc()).limit(limit)))
+        (
+            await db.execute(
+                select(Order)
+                .where(Order.buyer_id == user.id)
+                .order_by(Order.created_at.desc())
+                .limit(limit)
+            )
+        )
         .scalars()
         .all()
     )
@@ -514,7 +619,11 @@ async def sales_orders(
     query = select(Order).join(Product, Product.id == Order.product_id)
     if user.role == Role.vendor:
         query = query.where(Product.vendor_id == user.id)
-    orders = ((await db.execute(query.order_by(Order.created_at.desc()).limit(limit))).scalars().all())
+    orders = (
+        (await db.execute(query.order_by(Order.created_at.desc()).limit(limit)))
+        .scalars()
+        .all()
+    )
     return [await order_summary(db, order) for order in orders]
 
 
@@ -529,8 +638,10 @@ async def cancel_order(
         raise HTTPException(status_code=404, detail="Order not found")
     if order.status != OrderStatus.pending:
         raise HTTPException(status_code=409, detail="Only pending orders can be cancelled")
-    order.status = OrderStatus.cancelled
     product = await db.get(Product, order.product_id)
+    release_inventory(product, order)
+    order.status = OrderStatus.cancelled
+    order.fulfillment_status = FulfillmentStatus.cancelled
     await create_notification(
         db,
         user_id=user.id,
@@ -567,21 +678,32 @@ async def retry_order_payment(
     product = await db.get(Product, order.product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
+    if not order.inventory_reserved:
+        reserve_inventory(product, order)
     reference = f"bloom-{uuid.uuid4().hex}"
-    data = await paystack_request(
-        "POST",
-        "/transaction/initialize",
-        json={
-            "email": user.email,
-            "amount": int(order.total * Decimal("100")),
-            "currency": order.currency,
-            "reference": reference,
-            "callback_url": settings.paystack_callback_url,
-            "metadata": {"order_id": order.id, "product_id": product.id, "buyer_id": user.id},
-        },
-    )
+    try:
+        data = await paystack_request(
+            "POST",
+            "/transaction/initialize",
+            json={
+                "email": user.email,
+                "amount": int(order.total * Decimal("100")),
+                "currency": order.currency,
+                "reference": reference,
+                "callback_url": settings.paystack_callback_url,
+                "metadata": {
+                    "order_id": order.id,
+                    "product_id": product.id,
+                    "buyer_id": user.id,
+                },
+            },
+        )
+    except HTTPException:
+        await db.rollback()
+        raise
     order.reference = reference
     order.status = OrderStatus.pending
+    order.fulfillment_status = FulfillmentStatus.unfulfilled
     await db.commit()
     return OrderCheckoutResponse(order_id=order.id, reference=reference, **data)
 
