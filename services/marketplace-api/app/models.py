@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 from decimal import Decimal
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
@@ -38,6 +38,8 @@ class Product(Base):
     currency: Mapped[str] = mapped_column(String(3), default="USD")
     image_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     image_public_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    inventory_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -49,6 +51,23 @@ class OrderStatus(str, enum.Enum):
     paid = "paid"
     failed = "failed"
     cancelled = "cancelled"
+
+
+class FulfillmentStatus(str, enum.Enum):
+    unfulfilled = "unfulfilled"
+    processing = "processing"
+    shipped = "shipped"
+    delivered = "delivered"
+    cancelled = "cancelled"
+
+
+class RefundStatus(str, enum.Enum):
+    none = "none"
+    requested = "requested"
+    approved = "approved"
+    processing = "processing"
+    refunded = "refunded"
+    rejected = "rejected"
 
 
 class Order(Base):
@@ -72,6 +91,20 @@ class Order(Base):
     postal_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     country: Mapped[str | None] = mapped_column(String(120), nullable=True)
     buyer_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    inventory_reserved: Mapped[bool] = mapped_column(Boolean, default=False)
+    fulfillment_status: Mapped[FulfillmentStatus] = mapped_column(
+        Enum(FulfillmentStatus), default=FulfillmentStatus.unfulfilled
+    )
+    carrier: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    tracking_number: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    shipped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    refund_status: Mapped[RefundStatus] = mapped_column(
+        Enum(RefundStatus), default=RefundStatus.none
+    )
+    refund_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    refund_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    refund_processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     buyer: Mapped[User] = relationship()
