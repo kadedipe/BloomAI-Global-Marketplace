@@ -3,7 +3,7 @@ import os
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 
 from app.models import Role
-from app.support_assistant import classify_message, fallback_reply
+from app.support_assistant import classify_message, fallback_reply, safe_ai_output
 
 
 def test_critical_payment_issue_recommends_escalation():
@@ -31,3 +31,18 @@ def test_account_safety_message_never_requests_password():
 def test_role_enum_keeps_customer_and_vendor_scope():
     assert Role.customer.value == "customer"
     assert Role.vendor.value == "vendor"
+
+
+def test_reasoning_style_provider_output_is_rejected():
+    leaked = (
+        "Here's a thinking process:\n"
+        "1. Analyze User Input\n"
+        "2. Key observations: order #6 was refunded"
+    )
+    assert safe_ai_output(leaked) is None
+
+
+def test_normal_support_answer_is_kept_and_markdown_is_removed():
+    answer = "**Payment:** Paid\n- Refund: Refunded"
+    cleaned = safe_ai_output(answer)
+    assert cleaned == "Payment: Paid\n- Refund: Refunded"
