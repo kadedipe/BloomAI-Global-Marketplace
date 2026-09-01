@@ -296,11 +296,8 @@ async def escalate_support(
     if payload.order_id is not None:
         await accessible_order(db, user, payload.order_id)
 
-    priority = (
-        SupportCasePriority.critical
-        if payload.category in {"payment", "refund", "account"}
-        else SupportCasePriority.high
-    )
+    _, critical = classify_message(payload.message)
+    priority = SupportCasePriority.critical if critical else SupportCasePriority.high
     case, admins_notified = await open_support_case(
         db,
         user=user,
