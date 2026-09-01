@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     aftership_api_key: str = ""
     aftership_webhook_secret: str = ""
     aftership_api_version: str = "2026-07"
+    support_ai_api_key: str = ""
+    support_ai_base_url: str = "https://openrouter.ai/api/v1"
+    support_ai_model: str = "google/gemini-2.0-flash-001"
     rate_limit_enabled: bool = True
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -97,6 +100,10 @@ class Settings(BaseSettings):
     @property
     def aftership_enabled(self) -> bool:
         return bool(self.aftership_api_key)
+
+    @property
+    def support_ai_enabled(self) -> bool:
+        return bool(self.support_ai_api_key and self.support_ai_base_url and self.support_ai_model)
 
 
 @lru_cache
