@@ -1,5 +1,6 @@
 from .notifications import api_router
-from . import commerce, hardening, hardening_compat, hardening_routes
+from . import commerce, hardening_routes
+from . import hardening_compat as hardening_compat
 
 _existing_routes = list(api_router.routes)
 api_router.routes.clear()
