@@ -22,9 +22,6 @@ support_case_priority = sa.Enum(
 
 
 def upgrade() -> None:
-    bind = op.get_bind()
-    support_case_status.create(bind, checkfirst=True)
-    support_case_priority.create(bind, checkfirst=True)
     op.create_table(
         "support_cases",
         sa.Column("id", sa.Integer(), primary_key=True),
