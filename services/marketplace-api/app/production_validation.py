@@ -48,6 +48,11 @@ async def commerce_readiness(
     paystack_webhook = f"{api_base}/api/v1/payments/webhook"
     aftership_webhook = f"{api_base}/api/v1/shipping/aftership/webhook"
 
+    aftership_api_configured = settings.aftership_enabled
+    aftership_webhook_secret_configured = bool(settings.aftership_webhook_secret)
+    aftership_requested = aftership_api_configured or aftership_webhook_secret_configured
+    aftership_complete = aftership_api_configured and aftership_webhook_secret_configured
+
     checks = {
         "production_environment": settings.environment == "production",
         "postgres_database": settings.database_url.startswith("postgresql+asyncpg://"),
@@ -55,12 +60,33 @@ async def commerce_readiness(
         "web_base_https": settings.web_base_url.startswith("https://"),
         "paystack_configured": settings.paystack_enabled,
         "paystack_callback_https": settings.paystack_callback_url.startswith("https://"),
-        "aftership_api_configured": settings.aftership_enabled,
-        "aftership_webhook_secret_configured": bool(settings.aftership_webhook_secret),
+        "aftership_api_configured": aftership_api_configured,
+        "aftership_webhook_secret_configured": aftership_webhook_secret_configured,
         "reservation_window_valid": settings.order_reservation_minutes >= 5,
     }
-    blockers = [name for name, ok in checks.items() if not ok]
+
+    required_checks = {
+        "production_environment": checks["production_environment"],
+        "postgres_database": checks["postgres_database"],
+        "public_api_https": checks["public_api_https"],
+        "web_base_https": checks["web_base_https"],
+        "paystack_configured": checks["paystack_configured"],
+        "paystack_callback_https": checks["paystack_callback_https"],
+        "reservation_window_valid": checks["reservation_window_valid"],
+    }
+    blockers = [name for name, ok in required_checks.items() if not ok]
+
     warnings: list[str] = []
+    if aftership_requested and not aftership_complete:
+        if not aftership_api_configured:
+            blockers.append("aftership_api_configured")
+        if not aftership_webhook_secret_configured:
+            blockers.append("aftership_webhook_secret_configured")
+    elif not aftership_requested:
+        warnings.append(
+            "AfterShip tracking is not configured; manual carrier/tracking fulfillment remains available."
+        )
+
     if settings.shipping_flat_amount == 0:
         warnings.append("SHIPPING_FLAT_AMOUNT is 0; confirm that free shipping is intentional.")
     if settings.sales_tax_percent == 0:
@@ -81,8 +107,10 @@ async def commerce_readiness(
                 "webhook_url": paystack_webhook,
             },
             "aftership": {
-                "api_configured": settings.aftership_enabled,
-                "webhook_secret_configured": bool(settings.aftership_webhook_secret),
+                "configured": aftership_complete,
+                "optional": True,
+                "api_configured": aftership_api_configured,
+                "webhook_secret_configured": aftership_webhook_secret_configured,
                 "webhook_url": aftership_webhook,
                 "api_version": settings.aftership_api_version,
             },
