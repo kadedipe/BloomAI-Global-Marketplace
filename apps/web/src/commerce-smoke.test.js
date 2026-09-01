@@ -18,4 +18,12 @@ describe('commerce frontend contract',()=>{
     expect(orderFlow).toContain('/api/v1/orders/quote');
     expect(orderFlow).toContain('/api/v1/orders/checkout');
   });
+
+  it('does not recursively poll auth from profile DOM mutations',()=>{
+    const profile=source('./profile-photo-entry.js');
+    expect(profile).toContain('syncInFlight');
+    expect(profile).toContain('authRejected');
+    expect(profile).toContain('if(currentUser||authRejected||syncInFlight)return');
+    expect(profile).toContain("if(response.status===401){currentUser=null;authRejected=true;return false;}");
+  });
 });

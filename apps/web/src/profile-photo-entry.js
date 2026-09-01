@@ -4,6 +4,8 @@ const API=(import.meta.env.VITE_API_URL||'http://localhost:8000').replace(/\/$/,
 const ALLOWED=['image/jpeg','image/png','image/webp'];
 const MAX_BYTES=5_000_000;
 let currentUser=null;
+let syncInFlight=false;
+let authRejected=false;
 
 async function api(path,options={}){
   const headers={...(options.body instanceof FormData?{}:{'Content-Type':'application/json'}),...(options.headers||{})};
@@ -113,16 +115,20 @@ function openDialog(){
   input.focus();
 }
 
-async function syncProfileSetting(){
+async function syncProfileSetting({force=false}={}){
   const actions=document.querySelector('.account-actions');
   const chip=document.querySelector('.user-chip');
   if(!actions||!chip)return false;
+  if(syncInFlight||(!force&&(currentUser||authRejected)))return Boolean(currentUser);
+  syncInFlight=true;
   try{
     const response=await api('/api/v1/auth/me');
+    if(response.status===401){currentUser=null;authRejected=true;return false;}
     if(!response.ok)return false;
     const user=await response.json();
     if(!['customer','vendor'].includes(user.role))return false;
     currentUser=user;
+    authRejected=false;
     renderChipAvatar(user);
     if(!actions.querySelector('[data-profile-photo-button]')){
       const button=document.createElement('button');
@@ -135,8 +141,14 @@ async function syncProfileSetting(){
     }
     return true;
   }catch{return false;}
+  finally{syncInFlight=false;}
 }
 
-const observer=new MutationObserver(()=>{syncProfileSetting()});
+const observer=new MutationObserver(()=>{
+  if(currentUser||authRejected||syncInFlight)return;
+  syncProfileSetting();
+});
 observer.observe(document.documentElement,{childList:true,subtree:true});
+window.addEventListener('focus',()=>{authRejected=false;syncProfileSetting({force:true})});
+window.addEventListener('bloomai:authenticated',()=>{authRejected=false;currentUser=null;syncProfileSetting({force:true})});
 syncProfileSetting();
