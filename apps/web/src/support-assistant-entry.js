@@ -30,8 +30,8 @@ async function supportFetch(url,options){
 const style=document.createElement('style');
 style.textContent=`
 .bloom-support-launch{position:fixed;right:22px;bottom:22px;z-index:9998;border:0;border-radius:999px;padding:13px 18px;background:#184c35;color:white;font-weight:700;box-shadow:0 12px 30px rgba(0,0,0,.2);cursor:pointer}
-.bloom-support-panel{position:fixed;right:22px;bottom:82px;width:min(390px,calc(100vw - 28px));max-height:70vh;z-index:9999;background:white;border:1px solid #d8e3dc;border-radius:18px;box-shadow:0 18px 50px rgba(0,0,0,.22);display:none;overflow:hidden;font:14px/1.45 system-ui,sans-serif}
-.bloom-support-panel.open{display:flex;flex-direction:column}.bloom-support-head{padding:16px 18px;background:#f2f8f4;display:flex;justify-content:space-between;gap:12px;align-items:center}.bloom-support-head strong{display:block;font-size:16px}.bloom-support-head small{color:#5c6d63}.bloom-support-close{border:0;background:transparent;font-size:22px;cursor:pointer}.bloom-support-log{padding:16px;overflow:auto;display:flex;flex-direction:column;gap:10px;min-height:180px}.bloom-support-msg{padding:10px 12px;border-radius:12px;white-space:pre-wrap}.bloom-support-msg.bot{background:#f4f6f5}.bloom-support-msg.user{background:#e7f3eb;align-self:flex-end;max-width:88%}.bloom-support-actions{padding:0 16px 10px}.bloom-support-escalate{border:1px solid #a33;background:white;color:#8c2323;border-radius:10px;padding:8px 10px;cursor:pointer}.bloom-support-form{display:flex;gap:8px;padding:12px;border-top:1px solid #e5ebe7}.bloom-support-form textarea{flex:1;resize:none;min-height:48px;border:1px solid #cfd9d2;border-radius:10px;padding:9px}.bloom-support-form button{border:0;border-radius:10px;background:#184c35;color:white;padding:0 14px;font-weight:700;cursor:pointer}.bloom-support-note{padding:0 16px 12px;color:#667085;font-size:12px}
+.bloom-support-panel{position:fixed;right:22px;bottom:82px;width:min(410px,calc(100vw - 28px));max-height:72vh;z-index:9999;background:white;border:1px solid #d8e3dc;border-radius:18px;box-shadow:0 18px 50px rgba(0,0,0,.22);display:none;overflow:hidden;font:14px/1.45 system-ui,sans-serif}
+.bloom-support-panel.open{display:flex;flex-direction:column}.bloom-support-head{padding:16px 18px;background:#f2f8f4;display:flex;justify-content:space-between;gap:12px;align-items:center}.bloom-support-head strong{display:block;font-size:16px}.bloom-support-head small{color:#5c6d63}.bloom-support-close{border:0;background:transparent;font-size:22px;cursor:pointer}.bloom-support-log{padding:16px;overflow:auto;display:flex;flex-direction:column;gap:10px;min-height:180px}.bloom-support-msg{padding:10px 12px;border-radius:12px;white-space:pre-wrap}.bloom-support-msg.bot{background:#f4f6f5}.bloom-support-msg.user{background:#e7f3eb;align-self:flex-end;max-width:88%}.bloom-support-actions{padding:0 16px 10px;display:flex;gap:8px;flex-wrap:wrap}.bloom-support-escalate,.bloom-support-secondary{border:1px solid #a33;background:white;color:#8c2323;border-radius:10px;padding:8px 10px;cursor:pointer}.bloom-support-secondary{border-color:#b9c8bf;color:#184c35}.bloom-support-form{display:flex;gap:8px;padding:12px;border-top:1px solid #e5ebe7}.bloom-support-form textarea{flex:1;resize:none;min-height:48px;border:1px solid #cfd9d2;border-radius:10px;padding:9px}.bloom-support-form button{border:0;border-radius:10px;background:#184c35;color:white;padding:0 14px;font-weight:700;cursor:pointer}.bloom-support-note{padding:0 16px 12px;color:#667085;font-size:12px}
 `;
 document.head.appendChild(style);
 
@@ -48,15 +48,51 @@ panel.append(head,log,actions,note,form);document.body.append(launch,panel);
 
 let lastRequest=null;
 function addMessage(kind,text){const msg=el('div',{class:`bloom-support-msg ${kind}`},text);log.append(msg);log.scrollTop=log.scrollHeight;}
-function clearEscalate(){actions.innerHTML='';}
-function showEscalate(payload){clearEscalate();const button=el('button',{class:'bloom-support-escalate',type:'button'},'Escalate to administrator');button.addEventListener('click',async()=>{
+function clearActions(){actions.innerHTML='';}
+
+async function replyToCase(caseId){
+  const message=window.prompt(`Reply to support case #${caseId}`,'');
+  if(!message?.trim())return;
+  try{
+    const r=await supportFetch(`${API}/api/v1/support/cases/${caseId}/reply`,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:message.trim()})});
+    if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.detail||'Unable to send support reply');}
+    const data=await r.json();addMessage('user',message.trim());addMessage('bot',`Your reply was added to support case #${data.id}. Current status: ${data.status.replaceAll('_',' ')}.`);
+  }catch(err){addMessage('bot',supportError(err,'Unable to send your support reply right now.'));}
+}
+
+async function showRecentCases(){
+  clearActions();
+  try{
+    const r=await supportFetch(`${API}/api/v1/support/cases?limit=5`,{credentials:'include'});
+    if(!r.ok)throw new Error('Unable to load support cases');
+    const data=await r.json();
+    if(!data.items?.length){addMessage('bot','You do not have any support cases yet.');addCasesButton();return;}
+    const summary=data.items.map(item=>`Case #${item.id} · ${item.status.replaceAll('_',' ')} · ${item.subject}`).join('\n');
+    addMessage('bot',`Your recent support cases:\n${summary}`);
+    data.items.filter(item=>item.status!=='closed').forEach(item=>{
+      const button=el('button',{class:'bloom-support-secondary',type:'button'},`Reply case #${item.id}`);
+      button.addEventListener('click',()=>replyToCase(item.id));actions.append(button);
+    });
+    addCasesButton();
+  }catch(err){addMessage('bot',supportError(err,'Unable to load your support cases right now.'));addCasesButton();}
+}
+
+function addCasesButton(){
+  if([...actions.children].some(node=>node.textContent==='My support cases'))return;
+  const button=el('button',{class:'bloom-support-secondary',type:'button'},'My support cases');
+  button.addEventListener('click',showRecentCases);actions.append(button);
+}
+
+function showEscalate(payload){clearActions();const button=el('button',{class:'bloom-support-escalate',type:'button'},'Escalate to administrator');button.addEventListener('click',async()=>{
   button.disabled=true;button.textContent='Escalating…';
   try{
     const r=await supportFetch(`${API}/api/v1/support/escalate`,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.detail||'Escalation failed');}
-    const data=await r.json();addMessage('bot',data.admins_notified?`Escalated. ${data.admins_notified} administrator notification(s) were created.`:'Escalated. A support record was created, but no administrator notification recipient was available.');clearEscalate();
+    const data=await r.json();
+    addMessage('bot',`Support case #${data.case_id} was opened${data.admins_notified?` and ${data.admins_notified} administrator notification(s) were created`:''}. You can continue the conversation from My support cases.`);
+    clearActions();const replyButton=el('button',{class:'bloom-support-secondary',type:'button'},`Reply case #${data.case_id}`);replyButton.addEventListener('click',()=>replyToCase(data.case_id));actions.append(replyButton);addCasesButton();
   }catch(err){addMessage('bot',supportError(err,'Unable to reach BloomAI Support to escalate this issue. Please try again.'));button.disabled=false;button.textContent='Escalate to administrator';}
-});actions.append(button);}
+});actions.append(button);addCasesButton();}
 
 async function checkAccess(){
   try{const r=await fetch(`${API}/api/v1/auth/me`,{credentials:'include'});if(!r.ok)return null;const me=await r.json();return ['customer','vendor'].includes(me.role)?me:null;}catch{return null;}
@@ -64,15 +100,15 @@ async function checkAccess(){
 
 launch.addEventListener('click',async()=>{
   panel.classList.toggle('open');
-  if(panel.classList.contains('open')&&!log.childElementCount){const me=await checkAccess();if(!me)addMessage('bot','Please sign in as a BloomAI customer or vendor to use the support assistant.');else addMessage('bot',`Hi ${me.name}. I can help with orders, payments, refunds, delivery, listings and account issues. What happened?`);}
+  if(panel.classList.contains('open')&&!log.childElementCount){const me=await checkAccess();if(!me)addMessage('bot','Please sign in as a BloomAI customer or vendor to use the support assistant.');else{addMessage('bot',`Hi ${me.name}. I can help with orders, payments, refunds, delivery, listings and account issues. What happened?`);addCasesButton();}}
 });
 close.addEventListener('click',()=>panel.classList.remove('open'));
 form.addEventListener('submit',async event=>{
-  event.preventDefault();const message=input.value.trim();if(!message)return;input.value='';clearEscalate();addMessage('user',message);send.disabled=true;
+  event.preventDefault();const message=input.value.trim();if(!message)return;input.value='';clearActions();addMessage('user',message);send.disabled=true;
   try{
     const r=await supportFetch(`${API}/api/v1/support/assistant`,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({message})});
     if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.detail||'Support assistant is unavailable');}
-    const data=await r.json();addMessage('bot',data.reply);lastRequest={message,category:data.category,order_id:data.order_id};if(data.escalation_recommended)showEscalate(lastRequest);else{const button=el('button',{class:'bloom-support-escalate',type:'button'},'Need human support?');button.addEventListener('click',()=>showEscalate(lastRequest));actions.append(button);}
-  }catch(err){addMessage('bot',supportError(err));}
+    const data=await r.json();addMessage('bot',data.reply);lastRequest={message,category:data.category,order_id:data.order_id};if(data.escalation_recommended)showEscalate(lastRequest);else{const button=el('button',{class:'bloom-support-escalate',type:'button'},'Need human support?');button.addEventListener('click',()=>showEscalate(lastRequest));actions.append(button);addCasesButton();}
+  }catch(err){addMessage('bot',supportError(err));addCasesButton();}
   finally{send.disabled=false;input.focus();}
 });
