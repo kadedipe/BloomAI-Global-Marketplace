@@ -209,8 +209,11 @@ async def reply_to_my_support_case(
 ):
     require_participant(user)
     case = await participant_case(db, user, case_id)
-    if case.status == SupportCaseStatus.closed:
-        raise HTTPException(status_code=409, detail="Closed support cases cannot receive replies")
+    if case.status in {SupportCaseStatus.resolved, SupportCaseStatus.closed}:
+        raise HTTPException(
+            status_code=409,
+            detail="Resolved or closed support cases must be reopened by an administrator before receiving replies",
+        )
     db.add(
         SupportCaseMessage(
             case_id=case.id,
@@ -220,7 +223,7 @@ async def reply_to_my_support_case(
         )
     )
     case.last_message_at = datetime.now(timezone.utc)
-    if case.status in {SupportCaseStatus.resolved, SupportCaseStatus.waiting_on_user}:
+    if case.status == SupportCaseStatus.waiting_on_user:
         case.status = SupportCaseStatus.open
     await notify_role(
         db,
