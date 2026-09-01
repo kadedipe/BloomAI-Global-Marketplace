@@ -13,7 +13,7 @@ from .notifications import OrderSummaryResponse, create_notification, notify_rol
 from .payments import request as paystack_request
 from .security import current_user
 
-router = APIRouter(prefix="/api/v1/orders", tags=["commerce"])
+router = APIRouter(prefix="/orders", tags=["commerce"])
 
 
 class FulfillmentUpdate(BaseModel):
