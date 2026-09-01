@@ -1,4 +1,5 @@
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -70,6 +71,15 @@ class Settings(BaseSettings):
             raise ValueError("Shipping configuration cannot be negative")
         if not 0 <= self.sales_tax_percent <= 100:
             raise ValueError("SALES_TAX_PERCENT must be between 0 and 100")
+
+        parsed_web = urlsplit(self.web_base_url.strip())
+        if parsed_web.scheme and parsed_web.netloc:
+            web_origin = f"{parsed_web.scheme}://{parsed_web.netloc}".rstrip("/")
+            origins = [origin.rstrip("/") for origin in self.cors_origins]
+            if web_origin not in origins:
+                origins.append(web_origin)
+            self.cors_origins = origins
+
         return self
 
     @property
