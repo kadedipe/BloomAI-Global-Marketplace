@@ -11,6 +11,12 @@ function el(tag,attrs={},text=''){
   return node;
 }
 
+function supportError(err,fallback='BloomAI Support is temporarily unavailable. Please try again.'){
+  if(err instanceof TypeError)return fallback;
+  const message=String(err?.message||'').trim();
+  return message&&message!=='Failed to fetch'?message:fallback;
+}
+
 const style=document.createElement('style');
 style.textContent=`
 .bloom-support-launch{position:fixed;right:22px;bottom:22px;z-index:9998;border:0;border-radius:999px;padding:13px 18px;background:#184c35;color:white;font-weight:700;box-shadow:0 12px 30px rgba(0,0,0,.2);cursor:pointer}
@@ -39,7 +45,7 @@ function showEscalate(payload){clearEscalate();const button=el('button',{class:'
     const r=await fetch(`${API}/api/v1/support/escalate`,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.detail||'Escalation failed');}
     const data=await r.json();addMessage('bot',data.admins_notified?`Escalated. ${data.admins_notified} administrator notification(s) were created.`:'Escalated. A support record was created, but no administrator notification recipient was available.');clearEscalate();
-  }catch(err){addMessage('bot',err.message);button.disabled=false;button.textContent='Escalate to administrator';}
+  }catch(err){addMessage('bot',supportError(err,'Unable to reach BloomAI Support to escalate this issue. Please try again.'));button.disabled=false;button.textContent='Escalate to administrator';}
 });actions.append(button);}
 
 async function checkAccess(){
@@ -57,6 +63,6 @@ form.addEventListener('submit',async event=>{
     const r=await fetch(`${API}/api/v1/support/assistant`,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({message})});
     if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.detail||'Support assistant is unavailable');}
     const data=await r.json();addMessage('bot',data.reply);lastRequest={message,category:data.category,order_id:data.order_id};if(data.escalation_recommended)showEscalate(lastRequest);else{const button=el('button',{class:'bloom-support-escalate',type:'button'},'Need human support?');button.addEventListener('click',()=>showEscalate(lastRequest));actions.append(button);}
-  }catch(err){addMessage('bot',err.message);}
+  }catch(err){addMessage('bot',supportError(err));}
   finally{send.disabled=false;input.focus();}
 });
