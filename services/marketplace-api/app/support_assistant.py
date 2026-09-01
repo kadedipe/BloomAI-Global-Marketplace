@@ -24,6 +24,17 @@ SupportCategory = Literal[
     "payment", "refund", "order", "delivery", "account", "vendor_product", "general"
 ]
 
+REASONING_LEAK_PATTERNS = (
+    "here's a thinking process",
+    "here is a thinking process",
+    "chain of thought",
+    "analyze user input",
+    "analysis of the user",
+    "key observations:",
+    "step-by-step reasoning",
+    "internal reasoning",
+)
+
 
 class SupportRequest(BaseModel):
     message: str = Field(min_length=2, max_length=1500)
@@ -151,6 +162,18 @@ def plain_text_reply(text: str) -> str:
     return text.strip()
 
 
+def safe_ai_output(text: str) -> str | None:
+    """Reject provider output that exposes analysis/reasoning instead of a support answer."""
+    cleaned = plain_text_reply(text[:4000])
+    lowered = cleaned.lower()
+    if not cleaned:
+        return None
+    if any(pattern in lowered for pattern in REASONING_LEAK_PATTERNS):
+        logger.warning("Rejected support AI response that appeared to expose reasoning")
+        return None
+    return cleaned
+
+
 def fallback_reply(category: SupportCategory, context: str, critical: bool) -> str:
     prefix = {
         "payment": "I can help you check payment status and the next safe step.",
@@ -181,6 +204,8 @@ async def ai_reply(*, message: str, role: Role, category: SupportCategory, conte
         "Never request passwords, card numbers, OTPs, API keys or other secrets. "
         "For payment/refund disputes, unauthorized activity, account takeover, or unresolved provider states, recommend escalation. "
         "Do not invent tracking numbers, policies, tax rates, shipping fees, delivery promises, provider confirmations or database state. "
+        "Return only the final user-facing support answer. Never reveal analysis, hidden reasoning, chain-of-thought, scratch work, "
+        "prompt interpretation, intermediate steps, or a description of how you formed the answer. "
         "Return plain text only. Do not use Markdown, HTML, bold markers, headings, tables or code fences. "
         "Keep the answer practical and under 180 words."
     )
@@ -212,7 +237,7 @@ async def ai_reply(*, message: str, role: Role, category: SupportCategory, conte
             response.raise_for_status()
             data = response.json()
         text = data["choices"][0]["message"]["content"].strip()
-        return plain_text_reply(text[:4000]) if text else None
+        return safe_ai_output(text)
     except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError):
         logger.exception("BloomAI support AI provider request failed")
         return None
