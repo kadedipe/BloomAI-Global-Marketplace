@@ -8,6 +8,7 @@ from app.support_assistant import (
     critical_reply,
     fallback_reply,
     safe_ai_output,
+    wants_order_history,
 )
 
 
@@ -74,3 +75,9 @@ def test_fallback_critical_reply_uses_deterministic_path():
     )
     assert "unauthorized account access" in reply.lower()
     assert "bloomai administrator/support contact" in reply.lower()
+
+
+def test_full_order_history_must_be_requested_explicitly():
+    assert wants_order_history("Show me my full order history") is True
+    assert wants_order_history("Show all orders linked to my account") is True
+    assert wants_order_history("I think a payment may be unauthorized") is False
