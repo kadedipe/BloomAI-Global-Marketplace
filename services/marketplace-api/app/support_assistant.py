@@ -12,9 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import get_settings
 from .database import get_db
-from .models import Order, Product, Role, User
-from .notifications import create_notification, notify_role
+from .models import Order, Product, Role, SupportCasePriority, User
 from .security import current_user
+from .support_cases import open_support_case
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -58,6 +58,7 @@ class EscalationRequest(BaseModel):
 class EscalationResponse(BaseModel):
     escalated: bool
     admins_notified: int
+    case_id: int
 
 
 def require_participant(user: User) -> None:
@@ -266,8 +267,6 @@ async def support_assistant(
     category, critical = classify_message(payload.message)
     context, resolved_order_id = await recent_context(db, user, payload.order_id)
 
-    # Critical security/payment/refund issues deliberately bypass the external model.
-    # This keeps escalation wording deterministic and prevents unsupported claims.
     generated = None
     if not critical:
         generated = await ai_reply(
@@ -297,27 +296,22 @@ async def escalate_support(
     if payload.order_id is not None:
         await accessible_order(db, user, payload.order_id)
 
-    subject = f"Support escalation from {user.role.value}: {payload.category.replace('_', ' ')}"
-    order_text = f" Order #{payload.order_id}." if payload.order_id else ""
-    admins_notified = await notify_role(
-        db,
-        Role.admin,
-        type="system.critical.support",
-        title=subject,
-        message=f"{user.name} ({user.email}) requested support.{order_text} {payload.message}",
-        link="/admin.html#activity",
+    priority = (
+        SupportCasePriority.critical
+        if payload.category in {"payment", "refund", "account"}
+        else SupportCasePriority.high
     )
-    await create_notification(
+    case, admins_notified = await open_support_case(
         db,
-        user_id=user.id,
-        type="system.support",
-        title="Support request escalated",
-        message=(
-            "Your issue has been sent to a BloomAI administrator. "
-            "Do not send passwords, OTPs, card details or API keys in support messages."
-        ),
-        link="/#market",
-        force=True,
+        user=user,
+        category=payload.category,
+        message=payload.message,
+        order_id=payload.order_id,
+        priority=priority,
     )
     await db.commit()
-    return EscalationResponse(escalated=True, admins_notified=admins_notified)
+    return EscalationResponse(
+        escalated=True,
+        admins_notified=admins_notified,
+        case_id=case.id,
+    )
