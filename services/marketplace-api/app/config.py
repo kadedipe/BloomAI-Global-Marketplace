@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     resend_from_email: str = ""
     web_base_url: str = "http://localhost:5173"
+    public_api_base_url: str = ""
     order_reservation_minutes: int = 30
     shipping_flat_amount: float = 0.0
     shipping_free_threshold: float = 0.0
