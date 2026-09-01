@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,11 +13,14 @@ from .config import get_settings
 from .database import get_db
 from .email_delivery import send_transactional_email
 from .media import delete_profile_image, upload_profile_image
-from .models import Notification, NotificationPreference, Role, User
+from .models import Notification, NotificationPreference, Order, OrderStatus, Product, Role, User
+from .payments import request as paystack_request
 from .schemas import UserResponse
 from .security import current_user
 
-router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
+api_router = APIRouter(prefix="/api/v1")
+notification_router = APIRouter(prefix="/notifications", tags=["notifications"])
+orders_router = APIRouter(prefix="/orders", tags=["orders"])
 settings = get_settings()
 
 CATEGORY_FIELDS = {
@@ -70,6 +75,53 @@ class TestNotificationRequest(BaseModel):
 class TestNotificationResponse(BaseModel):
     target_role: Role
     delivered: int
+
+
+class OrderCheckoutRequest(BaseModel):
+    product_id: int
+    quantity: int = Field(default=1, ge=1, le=20)
+    recipient_name: str = Field(min_length=2, max_length=120)
+    phone: str = Field(min_length=5, max_length=40)
+    address_line1: str = Field(min_length=4, max_length=240)
+    city: str = Field(min_length=2, max_length=120)
+    region: str | None = Field(default=None, max_length=120)
+    postal_code: str | None = Field(default=None, max_length=32)
+    country: str = Field(min_length=2, max_length=120)
+    buyer_note: str | None = Field(default=None, max_length=1000)
+
+
+class OrderCheckoutResponse(BaseModel):
+    order_id: int
+    reference: str
+    authorization_url: str
+    access_code: str
+
+
+class OrderSummaryResponse(BaseModel):
+    id: int
+    reference: str
+    product_id: int
+    product_name: str
+    product_image_url: str | None
+    buyer_id: int
+    buyer_name: str
+    vendor_id: int
+    vendor_name: str
+    quantity: int
+    unit_price: Decimal
+    total: Decimal
+    currency: str
+    status: OrderStatus
+    recipient_name: str | None
+    phone: str | None
+    address_line1: str | None
+    city: str | None
+    region: str | None
+    postal_code: str | None
+    country: str | None
+    buyer_note: str | None
+    created_at: datetime
+    paid_at: datetime | None
 
 
 def notification_category(type: str) -> str:
@@ -127,12 +179,7 @@ async def create_notification(
         notification = Notification(user_id=user_id, type=type, title=title, message=message, link=link)
         db.add(notification)
     if email and settings.transactional_email_enabled:
-        await send_transactional_email(
-            to=user.email,
-            subject=title,
-            message=message,
-            link=link,
-        )
+        await send_transactional_email(to=user.email, subject=title, message=message, link=link)
     return notification
 
 
@@ -186,7 +233,39 @@ def preference_response(preference: NotificationPreference, user: User) -> Notif
     )
 
 
-@router.get("", response_model=NotificationListResponse)
+async def order_summary(db: AsyncSession, order: Order) -> OrderSummaryResponse:
+    product = await db.get(Product, order.product_id)
+    buyer = await db.get(User, order.buyer_id)
+    vendor = await db.get(User, product.vendor_id) if product else None
+    return OrderSummaryResponse(
+        id=order.id,
+        reference=order.reference,
+        product_id=order.product_id,
+        product_name=product.name if product else f"Product #{order.product_id}",
+        product_image_url=product.image_url if product else None,
+        buyer_id=order.buyer_id,
+        buyer_name=buyer.name if buyer else "Customer",
+        vendor_id=product.vendor_id if product else 0,
+        vendor_name=vendor.name if vendor else "Vendor",
+        quantity=order.quantity,
+        unit_price=order.unit_price,
+        total=order.total,
+        currency=order.currency,
+        status=order.status,
+        recipient_name=order.recipient_name,
+        phone=order.phone,
+        address_line1=order.address_line1,
+        city=order.city,
+        region=order.region,
+        postal_code=order.postal_code,
+        country=order.country,
+        buyer_note=order.buyer_note,
+        created_at=order.created_at,
+        paid_at=order.paid_at,
+    )
+
+
+@notification_router.get("", response_model=NotificationListResponse)
 async def list_notifications(
     limit: int = Query(20, ge=1, le=100),
     unread_only: bool = False,
@@ -211,7 +290,7 @@ async def list_notifications(
     return NotificationListResponse(items=list(items), unread_count=unread_count)
 
 
-@router.get("/preferences", response_model=NotificationPreferenceResponse)
+@notification_router.get("/preferences", response_model=NotificationPreferenceResponse)
 async def get_notification_preferences(
     user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
 ):
@@ -221,7 +300,7 @@ async def get_notification_preferences(
     return preference_response(preference, user)
 
 
-@router.patch("/preferences", response_model=NotificationPreferenceResponse)
+@notification_router.patch("/preferences", response_model=NotificationPreferenceResponse)
 async def update_notification_preferences(
     payload: NotificationPreferenceUpdate,
     user: User = Depends(current_user),
@@ -239,17 +318,14 @@ async def update_notification_preferences(
     return preference_response(preference, user)
 
 
-@router.post("/profile-photo", response_model=UserResponse)
+@notification_router.post("/profile-photo", response_model=UserResponse)
 async def upload_user_profile_photo(
     image: UploadFile = File(...),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
     if user.role not in {Role.customer, Role.vendor}:
-        raise HTTPException(
-            status_code=403,
-            detail="Profile photos are available to customer and vendor accounts",
-        )
+        raise HTTPException(status_code=403, detail="Profile photos are available to customer and vendor accounts")
     previous_public_id = user.avatar_public_id
     uploaded = await upload_profile_image(image, user.id)
     user.avatar_url = uploaded["image_url"]
@@ -261,16 +337,12 @@ async def upload_user_profile_photo(
     return user
 
 
-@router.delete("/profile-photo", response_model=UserResponse)
+@notification_router.delete("/profile-photo", response_model=UserResponse)
 async def remove_user_profile_photo(
-    user: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
 ):
     if user.role not in {Role.customer, Role.vendor}:
-        raise HTTPException(
-            status_code=403,
-            detail="Profile photos are available to customer and vendor accounts",
-        )
+        raise HTTPException(status_code=403, detail="Profile photos are available to customer and vendor accounts")
     previous_public_id = user.avatar_public_id
     user.avatar_url = None
     user.avatar_public_id = None
@@ -280,7 +352,7 @@ async def remove_user_profile_photo(
     return user
 
 
-@router.post("/test", response_model=TestNotificationResponse, status_code=201)
+@notification_router.post("/test", response_model=TestNotificationResponse, status_code=201)
 async def send_test_notification(
     payload: TestNotificationRequest,
     user: User = Depends(current_user),
@@ -291,20 +363,14 @@ async def send_test_notification(
     user_ids = (await db.execute(select(User.id).where(User.role == payload.target_role))).scalars().all()
     unique_user_ids = set(user_ids)
     if not unique_user_ids:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No {payload.target_role.value} accounts are available for notification testing",
-        )
+        raise HTTPException(status_code=404, detail=f"No {payload.target_role.value} accounts are available for notification testing")
     destination = "/admin.html" if payload.target_role == Role.admin else "/#market"
     delivered = await notify_users(
         db,
         unique_user_ids,
         type="system.test",
         title="BloomAI notification test",
-        message=(
-            "This is an administrator-initiated test notification. "
-            "No order, payment, or marketplace analytics record was created."
-        ),
+        message="This is an administrator-initiated test notification. No order, payment, or marketplace analytics record was created.",
         link=destination,
         force=True,
     )
@@ -312,7 +378,7 @@ async def send_test_notification(
     return TestNotificationResponse(target_role=payload.target_role, delivered=delivered)
 
 
-@router.patch("/{notification_id}/read", response_model=NotificationResponse)
+@notification_router.patch("/{notification_id}/read", response_model=NotificationResponse)
 async def mark_notification_read(
     notification_id: int,
     user: User = Depends(current_user),
@@ -328,7 +394,7 @@ async def mark_notification_read(
     return notification
 
 
-@router.post("/read-all", status_code=status.HTTP_204_NO_CONTENT)
+@notification_router.post("/read-all", status_code=status.HTTP_204_NO_CONTENT)
 async def mark_all_notifications_read(
     user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
 ):
@@ -338,3 +404,188 @@ async def mark_all_notifications_read(
         .values(read_at=datetime.now(timezone.utc))
     )
     await db.commit()
+
+
+@orders_router.post("/checkout", response_model=OrderCheckoutResponse, status_code=201)
+async def checkout_order(
+    payload: OrderCheckoutRequest,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if user.role not in {Role.customer, Role.vendor}:
+        raise HTTPException(status_code=403, detail="Customer or vendor account required")
+    product = await db.get(Product, payload.product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    if product.vendor_id == user.id:
+        raise HTTPException(status_code=409, detail="Vendors cannot purchase their own product")
+    supported = {item.strip().upper() for item in settings.paystack_currencies.split(",")}
+    if product.currency not in supported:
+        raise HTTPException(status_code=422, detail=f"Paystack checkout is not enabled for {product.currency}")
+
+    total = product.price * payload.quantity
+    reference = f"bloom-{uuid.uuid4().hex}"
+    values = payload.model_dump(exclude={"product_id", "quantity"})
+    for key, value in values.items():
+        if isinstance(value, str):
+            values[key] = value.strip() or None
+    order = Order(
+        reference=reference,
+        buyer_id=user.id,
+        product_id=product.id,
+        quantity=payload.quantity,
+        unit_price=product.price,
+        total=total,
+        currency=product.currency,
+        status=OrderStatus.pending,
+        **values,
+    )
+    db.add(order)
+    await db.flush()
+    try:
+        data = await paystack_request(
+            "POST",
+            "/transaction/initialize",
+            json={
+                "email": user.email,
+                "amount": int(total * Decimal("100")),
+                "currency": product.currency,
+                "reference": reference,
+                "callback_url": settings.paystack_callback_url,
+                "metadata": {"order_id": order.id, "product_id": product.id, "buyer_id": user.id},
+            },
+        )
+    except HTTPException:
+        await db.rollback()
+        raise
+
+    await db.commit()
+    await create_notification(
+        db,
+        user_id=user.id,
+        type="order.created",
+        title="Order started",
+        message=f"Your order for {product.name} is awaiting payment confirmation.",
+        link="/#orders",
+    )
+    await create_notification(
+        db,
+        user_id=product.vendor_id,
+        type="order.created",
+        title="New order received",
+        message=f"A customer started an order for {product.name} ({product.currency} {total}).",
+        link="/#orders",
+    )
+    await notify_role(
+        db,
+        Role.admin,
+        type="order.created",
+        title="New marketplace order",
+        message=f"Order #{order.id} was created for {product.name} ({product.currency} {total}).",
+        link="/admin.html#activity",
+        exclude_user_ids={user.id, product.vendor_id},
+    )
+    await db.commit()
+    return OrderCheckoutResponse(order_id=order.id, reference=reference, **data)
+
+
+@orders_router.get("", response_model=list[OrderSummaryResponse])
+async def my_orders(
+    limit: int = Query(50, ge=1, le=100),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    orders = (
+        (await db.execute(select(Order).where(Order.buyer_id == user.id).order_by(Order.created_at.desc()).limit(limit)))
+        .scalars()
+        .all()
+    )
+    return [await order_summary(db, order) for order in orders]
+
+
+@orders_router.get("/sales", response_model=list[OrderSummaryResponse])
+async def sales_orders(
+    limit: int = Query(50, ge=1, le=100),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if user.role not in {Role.vendor, Role.admin}:
+        raise HTTPException(status_code=403, detail="Vendor access required")
+    query = select(Order).join(Product, Product.id == Order.product_id)
+    if user.role == Role.vendor:
+        query = query.where(Product.vendor_id == user.id)
+    orders = ((await db.execute(query.order_by(Order.created_at.desc()).limit(limit))).scalars().all())
+    return [await order_summary(db, order) for order in orders]
+
+
+@orders_router.patch("/{order_id}/cancel", response_model=OrderSummaryResponse)
+async def cancel_order(
+    order_id: int,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    order = await db.get(Order, order_id)
+    if not order or order.buyer_id != user.id:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.status != OrderStatus.pending:
+        raise HTTPException(status_code=409, detail="Only pending orders can be cancelled")
+    order.status = OrderStatus.cancelled
+    product = await db.get(Product, order.product_id)
+    await create_notification(
+        db,
+        user_id=user.id,
+        type="order.cancelled",
+        title="Order cancelled",
+        message=f"Order #{order.id} has been cancelled.",
+        link="/#orders",
+    )
+    if product:
+        await create_notification(
+            db,
+            user_id=product.vendor_id,
+            type="order.cancelled",
+            title="Customer cancelled order",
+            message=f"Order #{order.id} for {product.name} was cancelled before payment.",
+            link="/#orders",
+        )
+    await db.commit()
+    await db.refresh(order)
+    return await order_summary(db, order)
+
+
+@orders_router.post("/{order_id}/pay", response_model=OrderCheckoutResponse)
+async def retry_order_payment(
+    order_id: int,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    order = await db.get(Order, order_id)
+    if not order or order.buyer_id != user.id:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.status not in {OrderStatus.pending, OrderStatus.failed}:
+        raise HTTPException(status_code=409, detail="This order cannot be sent for payment")
+    product = await db.get(Product, order.product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    reference = f"bloom-{uuid.uuid4().hex}"
+    data = await paystack_request(
+        "POST",
+        "/transaction/initialize",
+        json={
+            "email": user.email,
+            "amount": int(order.total * Decimal("100")),
+            "currency": order.currency,
+            "reference": reference,
+            "callback_url": settings.paystack_callback_url,
+            "metadata": {"order_id": order.id, "product_id": product.id, "buyer_id": user.id},
+        },
+    )
+    order.reference = reference
+    order.status = OrderStatus.pending
+    await db.commit()
+    return OrderCheckoutResponse(order_id=order.id, reference=reference, **data)
+
+
+api_router.include_router(notification_router)
+api_router.include_router(orders_router)
+router = api_router
