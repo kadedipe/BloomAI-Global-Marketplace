@@ -174,7 +174,22 @@ def safe_ai_output(text: str) -> str | None:
     return cleaned
 
 
+def critical_reply(category: SupportCategory, context: str) -> str:
+    issue = {
+        "payment": "This may involve unauthorized or disputed payment activity.",
+        "refund": "This may involve a missing or disputed refund.",
+        "account": "This may involve unauthorized account access.",
+    }.get(category, "This issue needs human review.")
+    return (
+        f"{issue} Please escalate this issue to a BloomAI administrator/support contact. "
+        "Do not send passwords, OTPs, full card numbers or API keys.\n\n"
+        f"Current BloomAI context:\n{context}"
+    )
+
+
 def fallback_reply(category: SupportCategory, context: str, critical: bool) -> str:
+    if critical:
+        return critical_reply(category, context)
     prefix = {
         "payment": "I can help you check payment status and the next safe step.",
         "refund": "I can help you understand the refund stage and whether action is still pending.",
@@ -184,8 +199,7 @@ def fallback_reply(category: SupportCategory, context: str, critical: bool) -> s
         "vendor_product": "I can help vendors troubleshoot listings, inventory and order activity.",
         "general": "I can help with BloomAI marketplace support questions.",
     }[category]
-    extra = " This looks sensitive enough to escalate to a BloomAI administrator." if critical else ""
-    return f"{prefix}{extra}\n\nCurrent BloomAI context:\n{context}"
+    return f"{prefix}\n\nCurrent BloomAI context:\n{context}"
 
 
 async def ai_reply(*, message: str, role: Role, category: SupportCategory, context: str) -> str | None:
@@ -202,7 +216,6 @@ async def ai_reply(*, message: str, role: Role, category: SupportCategory, conte
         "Never claim a payment, refund, shipment, account change, notification, provider investigation, chargeback check, "
         "or other action was performed unless the supplied context explicitly says so. "
         "Never request passwords, card numbers, OTPs, API keys or other secrets. "
-        "For payment/refund disputes, unauthorized activity, account takeover, or unresolved provider states, recommend escalation. "
         "Do not invent tracking numbers, policies, tax rates, shipping fees, delivery promises, provider confirmations or database state. "
         "Return only the final user-facing support answer. Never reveal analysis, hidden reasoning, chain-of-thought, scratch work, "
         "prompt interpretation, intermediate steps, or a description of how you formed the answer. "
@@ -252,12 +265,18 @@ async def support_assistant(
     require_participant(user)
     category, critical = classify_message(payload.message)
     context, resolved_order_id = await recent_context(db, user, payload.order_id)
-    generated = await ai_reply(
-        message=payload.message,
-        role=user.role,
-        category=category,
-        context=context,
-    )
+
+    # Critical security/payment/refund issues deliberately bypass the external model.
+    # This keeps escalation wording deterministic and prevents unsupported claims.
+    generated = None
+    if not critical:
+        generated = await ai_reply(
+            message=payload.message,
+            role=user.role,
+            category=category,
+            context=context,
+        )
+
     reply = generated or fallback_reply(category, context, critical)
     return SupportResponse(
         reply=reply,
