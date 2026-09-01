@@ -49,6 +49,7 @@ panel.append(head,log,actions,note,form);document.body.append(launch,panel);
 let lastRequest=null;
 function addMessage(kind,text){const msg=el('div',{class:`bloom-support-msg ${kind}`},text);log.append(msg);log.scrollTop=log.scrollHeight;}
 function clearActions(){actions.innerHTML='';}
+function canParticipantReply(status){return ['open','in_progress','waiting_on_user'].includes(status);}
 
 async function replyToCase(caseId){
   const message=window.prompt(`Reply to support case #${caseId}`,'');
@@ -67,12 +68,15 @@ async function showRecentCases(){
     if(!r.ok)throw new Error('Unable to load support cases');
     const data=await r.json();
     if(!data.items?.length){addMessage('bot','You do not have any support cases yet.');addCasesButton();return;}
-    const summary=data.items.map(item=>`Case #${item.id} · ${item.status.replaceAll('_',' ')} · ${item.subject}`).join('\n');
+    const summary=data.items.map(item=>`Case #${item.id} · ${item.status.replaceAll('_',' ')} · ${item.subject}${item.order_id?` · Order #${item.order_id}`:''}`).join('\n');
     addMessage('bot',`Your recent support cases:\n${summary}`);
-    data.items.filter(item=>item.status!=='closed').forEach(item=>{
+    data.items.filter(item=>canParticipantReply(item.status)).forEach(item=>{
       const button=el('button',{class:'bloom-support-secondary',type:'button'},`Reply case #${item.id}`);
       button.addEventListener('click',()=>replyToCase(item.id));actions.append(button);
     });
+    if(data.items.some(item=>item.status==='resolved')){
+      addMessage('bot','Resolved cases are read-only. An administrator must reopen a case before another participant reply can be sent.');
+    }
     addCasesButton();
   }catch(err){addMessage('bot',supportError(err,'Unable to load your support cases right now.'));addCasesButton();}
 }
