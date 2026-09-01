@@ -17,13 +17,24 @@ def enabled() -> None:
 async def request(method: str, path: str, **kwargs) -> dict:
     enabled()
     headers = {"Authorization": f"Bearer {get_settings().paystack_secret_key}"}
-    async with httpx.AsyncClient(base_url=BASE_URL, timeout=15) as client:
-        response = await client.request(method, path, headers=headers, **kwargs)
+    try:
+        async with httpx.AsyncClient(base_url=BASE_URL, timeout=15) as client:
+            response = await client.request(method, path, headers=headers, **kwargs)
+    except httpx.RequestError as exc:
+        raise HTTPException(502, "Payment provider is temporarily unreachable") from exc
+
     if response.status_code >= 400:
         raise HTTPException(502, "Payment provider request failed")
-    body = response.json()
+
+    try:
+        body = response.json()
+    except ValueError as exc:
+        raise HTTPException(502, "Payment provider returned an invalid response") from exc
+
     if not body.get("status"):
         raise HTTPException(502, "Payment provider rejected the request")
+    if not isinstance(body.get("data"), dict):
+        raise HTTPException(502, "Payment provider returned incomplete checkout data")
     return body["data"]
 
 
