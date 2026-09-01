@@ -12,7 +12,6 @@ async function fetchCurrentUser(){
     if(response.status===401){user=null;return null}
     if(!response.ok)return user;
     user=await response.json();
-    window.dispatchEvent(new CustomEvent('bloomai:authenticated',{detail:user}));
     return user;
   }catch{return user}
 }
@@ -76,7 +75,7 @@ async function renderOrders(){
 }
 
 function renderOrderCards(items,buyerView){if(!items.length)return '<p class="order-empty">No orders yet.</p>';return items.map(order=>`<article class="order-card"><div><strong>${escapeHtml(order.product_name)}</strong><small>#${order.id} · ${new Date(order.created_at).toLocaleString()}</small></div><span class="order-status-pill ${order.status}">${order.status}</span><p>${order.quantity} × ${money(order.currency,order.unit_price)} · <strong>${money(order.currency,order.total)}</strong></p><p>${buyerView?`Vendor: ${escapeHtml(order.vendor_name)}`:`Customer: ${escapeHtml(order.buyer_name)}`}</p>${order.city||order.country?`<p>Delivery: ${escapeHtml([order.city,order.region,order.country].filter(Boolean).join(', '))}</p>`:''}${buyerView&&['pending','failed'].includes(order.status)?`<div class="order-card-actions"><button class="primary" data-pay="${order.id}">Pay now</button>${order.status==='pending'?`<button class="secondary" data-cancel="${order.id}">Cancel</button>`:''}</div>`:''}</article>`).join('')}
-const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[ch]));
+const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const escapeAttr=escapeHtml;
 
 const observer=new MutationObserver(()=>installBuyHandlers());observer.observe(document.documentElement,{subtree:true,childList:true});
