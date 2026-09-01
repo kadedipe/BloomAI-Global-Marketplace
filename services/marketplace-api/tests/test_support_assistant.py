@@ -3,7 +3,12 @@ import os
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 
 from app.models import Role
-from app.support_assistant import classify_message, fallback_reply, safe_ai_output
+from app.support_assistant import (
+    classify_message,
+    critical_reply,
+    fallback_reply,
+    safe_ai_output,
+)
 
 
 def test_critical_payment_issue_recommends_escalation():
@@ -46,3 +51,26 @@ def test_normal_support_answer_is_kept_and_markdown_is_removed():
     answer = "**Payment:** Paid\n- Refund: Refunded"
     cleaned = safe_ai_output(answer)
     assert cleaned == "Payment: Paid\n- Refund: Refunded"
+
+
+def test_critical_reply_only_directs_to_bloomai_admin_contact():
+    reply = critical_reply(
+        "payment",
+        "Order #6: payment=paid, fulfillment=delivered, refund=refunded.",
+    )
+    lowered = reply.lower()
+    assert "bloomai administrator/support contact" in lowered
+    assert "security team" not in lowered
+    assert "chargeback" not in lowered
+    assert "investigation" not in lowered
+    assert "order #6" in lowered
+
+
+def test_fallback_critical_reply_uses_deterministic_path():
+    reply = fallback_reply(
+        "account",
+        "No marketplace orders are available for this account.",
+        True,
+    )
+    assert "unauthorized account access" in reply.lower()
+    assert "bloomai administrator/support contact" in reply.lower()
