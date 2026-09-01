@@ -13,6 +13,12 @@ from .security import current_user
 
 router = APIRouter(prefix="/admin/commerce", tags=["admin-commerce-validation"])
 settings = get_settings()
+NO_TRACKING_DELIVERY_LABELS = {
+    "Local delivery",
+    "Vendor delivery",
+    "Customer pickup",
+    "Independent courier",
+}
 
 
 def require_admin(user: User) -> None:
@@ -36,6 +42,10 @@ def paystack_mode() -> str:
     if key.startswith("sk_live_"):
         return "live"
     return "configured"
+
+
+def is_no_tracking_delivery(order: Order) -> bool:
+    return order.tracking_number is None and order.carrier in NO_TRACKING_DELIVERY_LABELS
 
 
 @router.get("/readiness")
@@ -84,7 +94,7 @@ async def commerce_readiness(
             blockers.append("aftership_webhook_secret_configured")
     elif not aftership_requested:
         warnings.append(
-            "AfterShip tracking is not configured; manual carrier/tracking fulfillment remains available."
+            "AfterShip tracking is not configured; tracked shipping and legitimate no-tracking delivery remain available."
         )
 
     if settings.shipping_flat_amount == 0:
@@ -153,8 +163,8 @@ async def commerce_order_audit(
     if order.status == OrderStatus.pending and order.inventory_reserved and not order.reservation_expires_at:
         issues.append("Pending inventory reservation has no expiry timestamp.")
     if order.fulfillment_status in {FulfillmentStatus.shipped, FulfillmentStatus.delivered}:
-        if not order.carrier or not order.tracking_number:
-            issues.append("Shipped/delivered order is missing carrier or tracking number.")
+        if not is_no_tracking_delivery(order) and (not order.carrier or not order.tracking_number):
+            issues.append("Tracked shipped/delivered order is missing carrier or tracking number.")
     if order.fulfillment_status == FulfillmentStatus.delivered and not order.delivered_at:
         issues.append("Delivered order is missing delivered_at.")
     if order.refund_status == RefundStatus.refunded and not order.refund_processed_at:
@@ -199,6 +209,7 @@ async def commerce_order_audit(
             "tracking_number": order.tracking_number,
             "tracking_status": order.tracking_status,
             "tracking_provider_present": bool(order.tracking_provider_id),
+            "no_tracking_delivery": is_no_tracking_delivery(order),
             "shipped_at": order.shipped_at,
             "delivered_at": order.delivered_at,
             "refund_processed_at": order.refund_processed_at,
