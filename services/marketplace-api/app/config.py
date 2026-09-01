@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     resend_from_email: str = ""
     web_base_url: str = "http://localhost:5173"
+    order_reservation_minutes: int = 30
+    shipping_flat_amount: float = 0.0
+    shipping_free_threshold: float = 0.0
+    sales_tax_percent: float = 0.0
+    aftership_api_key: str = ""
+    aftership_webhook_secret: str = ""
+    aftership_api_version: str = "2026-07"
     rate_limit_enabled: bool = True
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -56,6 +63,12 @@ class Settings(BaseSettings):
                 "JWT_SECRET must be at least 32 characters and must not use the "
                 "development default in production"
             )
+        if self.order_reservation_minutes < 5:
+            raise ValueError("ORDER_RESERVATION_MINUTES must be at least 5")
+        if self.shipping_flat_amount < 0 or self.shipping_free_threshold < 0:
+            raise ValueError("Shipping configuration cannot be negative")
+        if not 0 <= self.sales_tax_percent <= 100:
+            raise ValueError("SALES_TAX_PERCENT must be between 0 and 100")
         return self
 
     @property
@@ -69,6 +82,10 @@ class Settings(BaseSettings):
     @property
     def transactional_email_enabled(self) -> bool:
         return bool(self.resend_api_key and self.resend_from_email)
+
+    @property
+    def aftership_enabled(self) -> bool:
+        return bool(self.aftership_api_key)
 
 
 @lru_cache
