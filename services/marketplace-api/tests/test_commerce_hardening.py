@@ -114,6 +114,53 @@ def test_structured_checkout_quote_inventory_expiry_and_legacy_retirement(monkey
         assert "orders/checkout" in legacy.json()["detail"]
 
 
+def test_checkout_returns_provider_url_when_notifications_fail(monkeypatch):
+    async def fake_paystack(method, path, **kwargs):
+        assert method == "POST"
+        assert path == "/transaction/initialize"
+        return {
+            "authorization_url": "https://checkout.example.test/recoverable",
+            "access_code": "recoverable_test",
+        }
+
+    async def fail_notification(*args, **kwargs):
+        raise RuntimeError("notification provider unavailable")
+
+    monkeypatch.setattr("app.notifications.paystack_request", fake_paystack)
+    monkeypatch.setattr(hardening, "create_notification", fail_notification)
+
+    with TestClient(app, headers=ORIGIN) as client:
+        register(client, "response-vendor@example.com", "vendor", "Response Vendor")
+        login(client, "response-vendor@example.com")
+        product = client.post(
+            "/api/v1/products",
+            json={
+                "name": "Response Rose",
+                "description": "Checkout response safety",
+                "price": 2500,
+                "currency": "NGN",
+                "inventory_quantity": 2,
+            },
+        ).json()
+        logout(client)
+
+        register(client, "response-buyer@example.com", "customer", "Response Buyer")
+        login(client, "response-buyer@example.com")
+
+        checkout = client.post(
+            "/api/v1/orders/checkout", json=checkout_payload(product["id"])
+        )
+        assert checkout.status_code == 201
+        body = checkout.json()
+        assert body["authorization_url"] == "https://checkout.example.test/recoverable"
+        assert body["order_id"]
+
+        orders = client.get("/api/v1/orders")
+        assert orders.status_code == 200
+        persisted = next(item for item in orders.json() if item["id"] == body["order_id"])
+        assert persisted["status"] == "pending"
+
+
 def test_aftership_webhook_signature(monkeypatch):
     monkeypatch.setenv("AFTERSHIP_WEBHOOK_SECRET", "tracking-secret")
     get_settings.cache_clear()
