@@ -1,1 +1,0 @@
-After this stage, recommended follow-up work is carrier API integration, automatic shipment tracking webhooks, inventory reservation expiry, tax/shipping-rate calculation and accounting reconciliation.
