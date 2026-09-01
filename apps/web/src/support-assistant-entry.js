@@ -50,18 +50,35 @@ let lastRequest=null;
 function addMessage(kind,text){const msg=el('div',{class:`bloom-support-msg ${kind}`},text);log.append(msg);log.scrollTop=log.scrollHeight;}
 function clearActions(){actions.innerHTML='';}
 
+async function replyToCase(caseId){
+  const message=window.prompt(`Reply to support case #${caseId}`,'');
+  if(!message?.trim())return;
+  try{
+    const r=await supportFetch(`${API}/api/v1/support/cases/${caseId}/reply`,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:message.trim()})});
+    if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.detail||'Unable to send support reply');}
+    const data=await r.json();addMessage('user',message.trim());addMessage('bot',`Your reply was added to support case #${data.id}. Current status: ${data.status.replaceAll('_',' ')}.`);
+  }catch(err){addMessage('bot',supportError(err,'Unable to send your support reply right now.'));}
+}
+
 async function showRecentCases(){
+  clearActions();
   try{
     const r=await supportFetch(`${API}/api/v1/support/cases?limit=5`,{credentials:'include'});
     if(!r.ok)throw new Error('Unable to load support cases');
     const data=await r.json();
-    if(!data.items?.length){addMessage('bot','You do not have any support cases yet.');return;}
+    if(!data.items?.length){addMessage('bot','You do not have any support cases yet.');addCasesButton();return;}
     const summary=data.items.map(item=>`Case #${item.id} · ${item.status.replaceAll('_',' ')} · ${item.subject}`).join('\n');
     addMessage('bot',`Your recent support cases:\n${summary}`);
-  }catch(err){addMessage('bot',supportError(err,'Unable to load your support cases right now.'));}
+    data.items.filter(item=>item.status!=='closed').forEach(item=>{
+      const button=el('button',{class:'bloom-support-secondary',type:'button'},`Reply case #${item.id}`);
+      button.addEventListener('click',()=>replyToCase(item.id));actions.append(button);
+    });
+    addCasesButton();
+  }catch(err){addMessage('bot',supportError(err,'Unable to load your support cases right now.'));addCasesButton();}
 }
 
 function addCasesButton(){
+  if([...actions.children].some(node=>node.textContent==='My support cases'))return;
   const button=el('button',{class:'bloom-support-secondary',type:'button'},'My support cases');
   button.addEventListener('click',showRecentCases);actions.append(button);
 }
@@ -72,8 +89,8 @@ function showEscalate(payload){clearActions();const button=el('button',{class:'b
     const r=await supportFetch(`${API}/api/v1/support/escalate`,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.detail||'Escalation failed');}
     const data=await r.json();
-    addMessage('bot',`Support case #${data.case_id} was opened${data.admins_notified?` and ${data.admins_notified} administrator notification(s) were created`:''}. You can continue this case from BloomAI Support.`);
-    clearActions();addCasesButton();
+    addMessage('bot',`Support case #${data.case_id} was opened${data.admins_notified?` and ${data.admins_notified} administrator notification(s) were created`:''}. You can continue the conversation from My support cases.`);
+    clearActions();const replyButton=el('button',{class:'bloom-support-secondary',type:'button'},`Reply case #${data.case_id}`);replyButton.addEventListener('click',()=>replyToCase(data.case_id));actions.append(replyButton);addCasesButton();
   }catch(err){addMessage('bot',supportError(err,'Unable to reach BloomAI Support to escalate this issue. Please try again.'));button.disabled=false;button.textContent='Escalate to administrator';}
 });actions.append(button);addCasesButton();}
 
