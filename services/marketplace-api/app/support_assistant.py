@@ -35,6 +35,15 @@ REASONING_LEAK_PATTERNS = (
     "internal reasoning",
 )
 
+ORDER_HISTORY_TERMS = (
+    "order history",
+    "all orders",
+    "previous orders",
+    "recent orders",
+    "full history",
+    "purchase history",
+)
+
 
 class SupportRequest(BaseModel):
     message: str = Field(min_length=2, max_length=1500)
@@ -100,6 +109,11 @@ def classify_message(message: str) -> tuple[SupportCategory, bool]:
     return category, critical
 
 
+def wants_order_history(message: str) -> bool:
+    text = message.lower()
+    return any(term in text for term in ORDER_HISTORY_TERMS)
+
+
 async def accessible_order(db: AsyncSession, user: User, order_id: int) -> Order:
     order = await db.get(Order, order_id)
     if not order:
@@ -111,7 +125,13 @@ async def accessible_order(db: AsyncSession, user: User, order_id: int) -> Order
     return order
 
 
-async def recent_context(db: AsyncSession, user: User, order_id: int | None) -> tuple[str, int | None]:
+async def recent_context(
+    db: AsyncSession,
+    user: User,
+    order_id: int | None,
+    *,
+    latest_only: bool = False,
+) -> tuple[str, int | None]:
     if order_id is not None:
         orders = [await accessible_order(db, user, order_id)]
     elif user.role == Role.customer:
@@ -120,7 +140,7 @@ async def recent_context(db: AsyncSession, user: User, order_id: int | None) -> 
                 await db.execute(
                     select(Order)
                     .where(Order.buyer_id == user.id)
-                    .order_by(Order.created_at.desc())
+                    .order_by(Order.created_at.desc(), Order.id.desc())
                     .limit(5)
                 )
             )
@@ -134,7 +154,7 @@ async def recent_context(db: AsyncSession, user: User, order_id: int | None) -> 
                 await db.execute(
                     select(Order)
                     .where(Order.product_id.in_(product_ids))
-                    .order_by(Order.created_at.desc())
+                    .order_by(Order.created_at.desc(), Order.id.desc())
                     .limit(5)
                 )
             )
@@ -145,6 +165,9 @@ async def recent_context(db: AsyncSession, user: User, order_id: int | None) -> 
     if not orders:
         return "No marketplace orders are available for this account.", order_id
 
+    if latest_only and order_id is None:
+        orders = orders[:1]
+
     lines = []
     for order in orders:
         lines.append(
@@ -152,7 +175,9 @@ async def recent_context(db: AsyncSession, user: User, order_id: int | None) -> 
             f"fulfillment={order.fulfillment_status.value}, refund={order.refund_status.value}, "
             f"amount={order.currency} {order.total}."
         )
-    return "\n".join(lines), orders[0].id if len(orders) == 1 else order_id
+
+    resolved_order_id = orders[0].id if len(orders) == 1 else order_id
+    return "\n".join(lines), resolved_order_id
 
 
 def plain_text_reply(text: str) -> str:
@@ -265,7 +290,13 @@ async def support_assistant(
 ):
     require_participant(user)
     category, critical = classify_message(payload.message)
-    context, resolved_order_id = await recent_context(db, user, payload.order_id)
+    latest_only = critical and payload.order_id is None and not wants_order_history(payload.message)
+    context, resolved_order_id = await recent_context(
+        db,
+        user,
+        payload.order_id,
+        latest_only=latest_only,
+    )
 
     generated = None
     if not critical:
