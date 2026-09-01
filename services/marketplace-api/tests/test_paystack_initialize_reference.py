@@ -4,7 +4,6 @@ os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 
 from fastapi.testclient import TestClient
 
-from app import hardening
 from app.main import app
 
 ORIGIN = {"origin": "http://localhost:5173"}
