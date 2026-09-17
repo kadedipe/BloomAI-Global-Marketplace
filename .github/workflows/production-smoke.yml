@@ -17,7 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      WEB_URL: ${{ vars.PRODUCTION_WEB_URL || 'https://bloomai-web-production.up.railway.app' }}
+      WEB_URL: ${{ vars.PRODUCTION_WEB_URL || 'https://bloomaiglobalmarketplace.com' }}
+      PUBLIC_WEB_ORIGIN: ${{ vars.PRODUCTION_WEB_ORIGIN || 'https://bloomaiglobalmarketplace.com' }}
       MARKETPLACE_URL: ${{ vars.PRODUCTION_MARKETPLACE_URL || 'https://marketplace-api-production-c7cd.up.railway.app' }}
       AI_URL: ${{ vars.PRODUCTION_AI_URL || 'https://ai-inference-api-production.up.railway.app' }}
     steps:
@@ -25,12 +26,48 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS --retry 3 --retry-all-errors "${WEB_URL}/" >/dev/null
+          curl -fsSL --retry 3 --retry-all-errors "${WEB_URL}/" >/dev/null
           curl -fsS --retry 3 --retry-all-errors "${MARKETPLACE_URL}/health/live" | python -c 'import json,sys; assert json.load(sys.stdin)["status"] == "ok"'
           curl -fsS --retry 3 --retry-all-errors "${MARKETPLACE_URL}/health/ready" | python -c 'import json,sys; assert json.load(sys.stdin)["status"] == "ready"'
           curl -fsS --retry 3 --retry-all-errors "${MARKETPLACE_URL}/api/v1/products" | python -c 'import json,sys; assert isinstance(json.load(sys.stdin), list)'
           curl -fsS --retry 3 --retry-all-errors "${AI_URL}/health/live" | python -c 'import json,sys; assert json.load(sys.stdin)["status"] == "ok"'
           curl -fsS --retry 3 --retry-all-errors "${AI_URL}/health/ready" | python -c 'import json,sys; d=json.load(sys.stdin); assert d["model_loaded"] and d["classes"] == 102'
+      - name: Verify browser CORS from canonical public domain
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          marketplace_get_headers="$(mktemp)"
+          curl -fsS --retry 3 --retry-all-errors \
+            -H "Origin: ${PUBLIC_WEB_ORIGIN}" \
+            -D "${marketplace_get_headers}" \
+            -o /dev/null \
+            "${MARKETPLACE_URL}/api/v1/products"
+          grep -Fqi "access-control-allow-origin: ${PUBLIC_WEB_ORIGIN}" "${marketplace_get_headers}"
+          grep -Fqi "access-control-allow-credentials: true" "${marketplace_get_headers}"
+
+          marketplace_preflight_headers="$(mktemp)"
+          curl -fsS --retry 3 --retry-all-errors \
+            -X OPTIONS \
+            -H "Origin: ${PUBLIC_WEB_ORIGIN}" \
+            -H "Access-Control-Request-Method: POST" \
+            -H "Access-Control-Request-Headers: content-type" \
+            -D "${marketplace_preflight_headers}" \
+            -o /dev/null \
+            "${MARKETPLACE_URL}/api/v1/auth/login"
+          grep -Fqi "access-control-allow-origin: ${PUBLIC_WEB_ORIGIN}" "${marketplace_preflight_headers}"
+          grep -Fqi "access-control-allow-credentials: true" "${marketplace_preflight_headers}"
+
+          ai_preflight_headers="$(mktemp)"
+          curl -fsS --retry 3 --retry-all-errors \
+            -X OPTIONS \
+            -H "Origin: ${PUBLIC_WEB_ORIGIN}" \
+            -H "Access-Control-Request-Method: POST" \
+            -H "Access-Control-Request-Headers: content-type" \
+            -D "${ai_preflight_headers}" \
+            -o /dev/null \
+            "${AI_URL}/api/v1/classify"
+          grep -Fqi "access-control-allow-origin: ${PUBLIC_WEB_ORIGIN}" "${ai_preflight_headers}"
       - name: Verify inference contract
         shell: bash
         run: |
