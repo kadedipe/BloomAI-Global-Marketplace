@@ -1,5 +1,12 @@
 import { defineRailway, github, group, postgres, preserve, project, redis, service } from "railway/iac";
 
+const PUBLIC_WEB_URL = "https://bloomaiglobalmarketplace.com";
+const PUBLIC_WEB_WWW_URL = "https://www.bloomaiglobalmarketplace.com";
+const LEGACY_WEB_URL = "https://bloomai-web-production.up.railway.app";
+const MARKETPLACE_API_URL = "https://marketplace-api-production-c7cd.up.railway.app";
+const AI_API_URL = "https://ai-inference-api-production.up.railway.app";
+const PRODUCTION_CORS_ORIGINS = [PUBLIC_WEB_URL, PUBLIC_WEB_WWW_URL, LEGACY_WEB_URL].join(",");
+
 export default defineRailway((ctx) => {
   const production = ctx.environment === "production";
   const database = postgres("BloomAI PostgreSQL");
@@ -13,7 +20,9 @@ export default defineRailway((ctx) => {
       DATABASE_URL: database.env.DATABASE_URL,
       REDIS_URL: cache.env.REDIS_URL,
       JWT_SECRET: preserve(),
-      CORS_ORIGINS: preserve(),
+      CORS_ORIGINS: production ? PRODUCTION_CORS_ORIGINS : preserve(),
+      WEB_BASE_URL: production ? PUBLIC_WEB_URL : preserve(),
+      PUBLIC_API_BASE_URL: production ? MARKETPLACE_API_URL : preserve(),
       ENABLE_API_DOCS: "true",
       SENTRY_DSN: preserve(),
       SENTRY_TRACES_SAMPLE_RATE: "0.1",
@@ -22,7 +31,7 @@ export default defineRailway((ctx) => {
       CLOUDINARY_API_SECRET: preserve(),
       PRODUCT_IMAGE_MAX_BYTES: "5000000",
       PAYSTACK_SECRET_KEY: preserve(),
-      PAYSTACK_CALLBACK_URL: "https://bloomai-web-production.up.railway.app/?payment=callback",
+      PAYSTACK_CALLBACK_URL: production ? `${PUBLIC_WEB_URL}/?payment=callback` : preserve(),
       PAYSTACK_CURRENCIES: "NGN",
       RATE_LIMIT_ENABLED: "true",
     },
@@ -35,7 +44,7 @@ export default defineRailway((ctx) => {
       MODEL_PATH: "/app/models/mobilenet_v3_small_flowers102.pth",
       MODEL_GDRIVE_FILE_ID: "1CfPnSgK_UYa71EZQwve1nrxtYK1Edb60",
       MODEL_SHA256: "9ee2f29556562a14a666ad8345b850b7aa11d26dc2e73b16a735d4d33b515dc9",
-      CORS_ORIGINS: preserve(),
+      CORS_ORIGINS: production ? PRODUCTION_CORS_ORIGINS : preserve(),
       SENTRY_DSN: preserve(),
       SENTRY_TRACES_SAMPLE_RATE: "0.1",
     },
@@ -47,7 +56,10 @@ export default defineRailway((ctx) => {
   const web = service("BloomAI Web", {
     source: github("kadedipe/BloomAI-Global-Marketplace", { branch: "main", rootDirectory: "apps/web" }),
     healthcheck: "/",
-    env: { VITE_API_URL: preserve(), VITE_AI_API_URL: preserve() },
+    env: {
+      VITE_API_URL: production ? MARKETPLACE_API_URL : preserve(),
+      VITE_AI_API_URL: production ? AI_API_URL : preserve(),
+    },
   });
   const backend = group("Backend", [database, cache, marketplaceApi, aiApi, eventWorker]);
   return project("BloomAI Global Marketplace", { resources: [backend, web] });
