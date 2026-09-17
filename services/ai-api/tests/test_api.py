@@ -3,7 +3,12 @@ import io
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from app.main import app, runtime
+from app.main import app, get_cors_origins, runtime
+
+
+PUBLIC_WEB_ORIGIN = "https://bloomaiglobalmarketplace.com"
+WWW_WEB_ORIGIN = "https://www.bloomaiglobalmarketplace.com"
+LEGACY_WEB_ORIGIN = "https://bloomai-web-production.up.railway.app"
 
 
 def test_liveness():
@@ -26,3 +31,14 @@ def test_classification_response(monkeypatch):
     response = TestClient(app).post("/api/v1/classify", files={"image": ("flower.png", buffer.getvalue(), "image/png")})
     assert response.status_code == 200
     assert response.json()["predictions"][0]["name"] == "pink primrose"
+
+
+def test_production_cors_self_heals_stale_configuration(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("CORS_ORIGINS", LEGACY_WEB_ORIGIN)
+
+    origins = get_cors_origins()
+
+    assert PUBLIC_WEB_ORIGIN in origins
+    assert WWW_WEB_ORIGIN in origins
+    assert LEGACY_WEB_ORIGIN in origins
