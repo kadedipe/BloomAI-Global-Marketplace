@@ -10,7 +10,27 @@ from PIL import Image, UnidentifiedImageError
 
 from app.model_runtime import runtime
 
-origins = [item.strip().rstrip("/") for item in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")]
+PRODUCTION_WEB_ORIGINS = (
+    "https://bloomaiglobalmarketplace.com",
+    "https://www.bloomaiglobalmarketplace.com",
+    "https://bloomai-web-production.up.railway.app",
+)
+
+
+def get_cors_origins() -> list[str]:
+    configured = [
+        item.strip().rstrip("/")
+        for item in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+        if item.strip()
+    ]
+    if os.getenv("ENVIRONMENT", "development") == "production":
+        for origin in PRODUCTION_WEB_ORIGINS:
+            if origin not in configured:
+                configured.append(origin)
+    return configured
+
+
+origins = get_cors_origins()
 if os.getenv("SENTRY_DSN"):
     sentry_sdk.init(
         dsn=os.environ["SENTRY_DSN"],
@@ -28,7 +48,12 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="BloomAI Inference API", version="2.0.0", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["GET", "POST"], allow_headers=["Content-Type"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 
 
 @app.get("/health/live")
@@ -61,4 +86,8 @@ async def classify(image: UploadFile = File(...)):
         predictions = runtime.predict(parsed, top_k=5)
     except RuntimeError as exc:
         raise HTTPException(503, str(exc)) from exc
-    return {"model": "mobilenet_v3_small", "model_sha256": runtime.expected_sha256, "predictions": predictions}
+    return {
+        "model": "mobilenet_v3_small",
+        "model_sha256": runtime.expected_sha256,
+        "predictions": predictions,
+    }
