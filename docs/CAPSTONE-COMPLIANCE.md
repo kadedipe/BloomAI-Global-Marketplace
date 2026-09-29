@@ -23,7 +23,6 @@ The custom public domain is the canonical application URL for Faculty review. Th
 | GitHub Actions | [CI workflow](https://github.com/kadedipe/BloomAI-Global-Marketplace/actions/workflows/ci.yml) |
 | Pull-request history | [Closed PRs](https://github.com/kadedipe/BloomAI-Global-Marketplace/pulls?q=is%3Apr+is%3Aclosed) |
 | Agile/Trello board | [BloomAI product backlog](https://trello.com/invite/b/6a359b640166be0bf5636001/ATTIe8e1ab12cb2c5e1b5e4827fd4cc8145a9434255E/bloomai-global-marketplace-product-backlog-board) |
-| Recorded presentation | [YouTube presentation](https://youtube.com/live/AffW_CxeEks?feature=share) |
 | README | [README.md](../README.md) |
 
 ## Faculty requirements and evidence
@@ -47,7 +46,7 @@ The custom public domain is the canonical application URL for Faculty review. Th
 | Latest-order support UX | Critical support defaults to the latest relevant accessible order | Complete |
 | Resolved-case controls | Resolved/closed cases are participant read-only until admin reopen | Complete |
 | CI/CD | GitHub Actions, container/model/supply-chain checks and Railway deployment | Complete |
-| Recorded presentation | YouTube presentation | Recorded; add Google Drive MP4/MOV URL if Faculty requires it |
+| Capstone presentation | Single `Capstone Video Presentation.mp4` verified in Google Drive for private Faculty resubmission; restricted sharing URL intentionally omitted from this public repository | Ready for private Faculty resubmission |
 | Grader access | `quantic-grader` invited | User-confirmed |
 
 ## Validated production workflows
@@ -92,7 +91,11 @@ Full evidence: [merged pull requests](https://github.com/kadedipe/BloomAI-Global
 
 ## Final submission gate
 
-Before Faculty submission, confirm the custom domain, Railway application, API/readiness endpoints, GitHub repository, Trello board and presentation links while signed out/incognito; preserve a passing CI/deployment run; keep secrets and private payment data out of evidence; confirm `quantic-grader` access; and add the public-view Google Drive MP4/MOV URL if required by the Faculty hosting specification.
+Before Faculty resubmission, confirm the custom domain, Railway application, API/readiness endpoints, GitHub repository and Trello board while signed out/incognito; preserve a passing CI/deployment run; keep secrets, private payment data and restricted academic submission links out of public evidence; confirm `quantic-grader` access; and submit the verified Google Drive link to the single `Capstone Video Presentation.mp4` directly through the Faculty submission channel.
+
+## Capstone presentation resubmission
+
+Faculty requested a Google Drive link to a single video file. The final `Capstone Video Presentation.mp4` has been verified as a Google Drive-hosted MP4 with link-viewer access and is ready for private Faculty resubmission. To respect the academic submission restriction communicated by Faculty, the Google Drive sharing URL is deliberately **not committed to this public repository** and should be supplied only through the authorized Faculty submission channel.
 
 ## Submission summary
 
