@@ -20,7 +20,6 @@ The canonical public-facing domain for BloomAI Global Marketplace is **https://b
 | GitHub repository | [Source repository](https://github.com/kadedipe/BloomAI-Global-Marketplace) |
 | GitHub Actions | [CI workflow](https://github.com/kadedipe/BloomAI-Global-Marketplace/actions/workflows/ci.yml) |
 | Trello board | [Product backlog](https://trello.com/invite/b/6a359b640166be0bf5636001/ATTIe8e1ab12cb2c5e1b5e4827fd4cc8145a9434255E/bloomai-global-marketplace-product-backlog-board) |
-| Recorded presentation | [YouTube capstone presentation](https://youtube.com/live/AffW_CxeEks?feature=share) |
 
 ## Production capabilities
 
@@ -76,7 +75,7 @@ The canonical deployed application link for Faculty submission is now the **Bloo
 | AI evidence | [AI tooling](docs/AI-TOOLING.md) and [production verification](docs/PRODUCTION-VERIFICATION.md) | Complete |
 | Commerce lifecycle | Checkout, payment, fulfillment and refund | Production lifecycle validated |
 | Support workflow | AI assistance, persistent cases, human escalation and Support Inbox | Production lifecycle validated |
-| Recorded demo | [YouTube presentation](https://youtube.com/live/AffW_CxeEks?feature=share) | Recorded; add Faculty-required Google Drive MP4/MOV URL if applicable |
+| Capstone presentation | Single `Capstone Video Presentation.mp4` verified in Google Drive for private Faculty resubmission; restricted sharing URL intentionally omitted from this public repository | Ready for private Faculty resubmission |
 
 ## Submission index
 
@@ -113,7 +112,7 @@ BloomAI uses Secure HttpOnly authentication cookies, role-based authorization, d
 
 ## Honest limitations
 
-BloomAI is a production-grade capstone/MVP rather than a completed commercial marketplace. Optional external capabilities such as live transactional email and tracked-shipping providers depend on their production configuration. Precise map markers require verified coordinates. Faculty-specific external submission items, including a Google Drive-hosted MP4/MOV if required, remain separate from repository implementation.
+BloomAI is a production-grade capstone/MVP rather than a completed commercial marketplace. Optional external capabilities such as live transactional email and tracked-shipping providers depend on their production configuration. Precise map markers require verified coordinates. Faculty submission media remains separate from the public repository. The required single `Capstone Video Presentation.mp4` has been verified in Google Drive for private Faculty resubmission; its restricted sharing URL is intentionally not published here.
 
 ## License
 
